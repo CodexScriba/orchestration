@@ -1,7 +1,7 @@
 ---
-stage: plan
+stage: code
 tags: [feature, p4]
-agent: planner
+agent: coder
 contexts: [skills/python-core-skills]
 ---
 
@@ -181,3 +181,177 @@ Implement conflict detection logic based on the files each task will touch.
 #### Context
 
 Phase 4: Concurrency and Safety
+
+---
+
+## Refined Prompt
+
+Objective: Add concurrent task execution with file-level conflict detection to enable safe parallelization of independent tasks.
+
+Implementation approach:
+1. **Create `scheduler.py`** with `ConcurrentScheduler` class that manages a pool of worker threads, each dispatching tasks via the existing `Dispatcher`.
+2. **Implement file-set extraction** — Parse task body for `## Files` section to extract paths; resolve relative to repo root; normalize paths for comparison.
+3. **Build conflict detector** — `ConflictDetector` class with `detect_conflicts(running_tasks, candidate_task) -> bool` that checks for overlapping file sets.
+4. **Thread-safe state updates** — Wrap `save_run_state()` calls with `threading.Lock`; use queue-based approach for stage result collection.
+5. **Dynamic concurrency** — Start with `max_concurrent = min(available_tasks, config.concurrency_limit or CPU_COUNT)`; adjust down when conflicts detected.
+6. **Blocking tag handling** — If task has `blocking` tag, drain all running tasks first, then run blocking task alone, then resume normal scheduling.
+
+Key decisions:
+- **ThreadPoolExecutor over raw threads**: Use `concurrent.futures.ThreadPoolExecutor` for clean lifecycle management and result collection.
+- **Copy-on-write for run state**: Each thread reads run state, modifies its task's entry, writes back under lock — avoids complex shared state.
+- **File-set from task body**: Parse `## Files` section looking for file paths (lines starting with `-` or table rows with path column); no frontmatter changes needed.
+- **Conflict at dispatch time**: Check conflicts before submitting task to executor, not after — prevents race conditions.
+- **Session name uniqueness**: Existing `create_session_name(run_id, task_id, stage)` already ensures unique names per invocation.
+
+Edge cases:
+- Task with no file list: Treat as touching no files (safe to parallelize).
+- Task touching many files: May serialize many other tasks; log warning if conflict set is large.
+- All tasks conflict with running task: Scheduler waits; log "waiting for slot" message.
+- Thread crash: Use `Future.result()` with timeout to detect hung threads; escalate to handoff if all threads hung.
+- Run state corruption: Each thread writes atomically; if load fails, re-initialize from task files.
+
+---
+
+## Context
+
+### File Tree (scoped)
+
+```
+src/orchestrator/
+├── __init__.py                    # ← modify (export Scheduler)
+├── dispatcher.py                  # ← modify (add thread-safe hooks)
+├── models.py                      # ← modify (add SchedulerConfig, ConflictInfo)
+├── state.py                       # ← read-only reference
+├── sessions.py                    # ← read-only reference
+├── scheduler.py                   # ← create
+└── cli.py                         # ← modify (wire scheduler into run command)
+
+config.json                        # ← modify (add concurrency config)
+```
+
+### Architecture Excerpts
+
+From `orchestrator.md`:
+- **Safe concurrency only**: Tasks touching same files must not run in parallel (Phase 4).
+- **Task frontmatter is source of truth**: Orchestrator reads but never writes frontmatter.
+- **One-line structured reporting**: `[SCHEDULER:START] task1 | model: codex | concurrent: 2/4`
+
+From `dispatcher.py`:
+- `Dispatcher.run()` processes tasks sequentially in a `for` loop — scheduler will call `dispatch_stage()` per task in parallel.
+- `save_run_state()` is called after each stage — needs lock wrapper for concurrent access.
+- `STAGE_PROVIDER_KEYS` maps stage to provider key — unchanged.
+
+From `sessions.py`:
+- `TmuxSessionManager.create_session_name(run_id, task_id, stage)` generates unique names — already thread-safe.
+- Sessions run via `subprocess.Popen` — each thread has its own process.
+
+### Skill Excerpts
+
+From `skills/python-core-skills`:
+- Use `threading.Lock` for shared state protection.
+- Use `concurrent.futures.ThreadPoolExecutor` for thread pools.
+- All public functions need type hints and Google-style docstrings.
+- Use `from __future__ import annotations` in all modules.
+
+### Code Excerpts
+
+**`dispatcher.py:152-220`** — Current sequential run loop (modify for concurrent dispatch):
+```python
+def run(self, *, ordered_tasks: list[Path] | None = None, run_state: RunState | None = None) -> RunState:
+    """Run queued tasks until completion, block, or handoff."""
+    active_run_state = run_state or self._new_run_state(ordered_tasks)
+    ordered_task_paths = [Path(path) for path in active_run_state.ordered_tasks]
+
+    for index in range(active_run_state.current_index, len(ordered_task_paths)):
+        task_path = ordered_task_paths[index]
+        # ... sequential processing
+```
+
+**`dispatcher.py:91-119`** — `dispatch_stage()` is already thread-safe (no shared mutable state):
+```python
+def dispatch_stage(self, *, task_path: Path, run_id: str) -> StageResult:
+    """Run one stage for a task using fallback chain, evaluate the outcome."""
+    before = parse_task_file(task_path)
+    stage = before.stage
+    # ... uses local variables only
+```
+
+**`state.py:44-58`** — `save_run_state()` needs lock wrapper:
+```python
+def save_run_state(path: Path, run_state: RunState) -> None:
+    """Persist a run state to JSON."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(asdict(run_state), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+```
+
+**`models.py:170-180`** — `TaskSnapshot` already has `tags` field for blocking detection:
+```python
+@dataclass(slots=True)
+class TaskSnapshot:
+    path: Path = field(default_factory=lambda: Path("."))
+    task_id: str = ""
+    stage: str = ""
+    agent: str = ""
+    tags: list[str] = field(default_factory=list)
+    # ...
+```
+
+### Dependency Graph
+
+```
+scheduler.py
+    ├── concurrent.futures (stdlib)
+    ├── threading (stdlib)
+    ├── dispatcher.py (Dispatcher, StageResult)
+    ├── models.py (TaskSnapshot, RunState, SchedulerConfig)
+    ├── state.py (save_run_state, load_run_state)
+    ├── scanner.py (parse_task_file)
+    └── logger.py (JsonlLogger)
+
+dispatcher.py (modify)
+    └── Add optional lock parameter for state updates
+
+cli.py (modify)
+    ├── scheduler.py (ConcurrentScheduler)
+    └── dispatcher.py (Dispatcher)
+```
+
+### Patterns to Follow
+
+1. **Thread-safe state writes**: Create `ThreadSafeStateWriter` wrapper class with internal `threading.Lock`.
+2. **Future-based result collection**: Use `concurrent.futures.as_completed()` to process results as they finish.
+3. **Graceful shutdown**: Use `executor.shutdown(wait=True, cancel_futures=False)` on SIGINT.
+4. **Logging**: Use structured one-line format: `[SCHEDULER:DISPATCH] task1 | slot: 1/4 | files: 3`.
+
+### Test Patterns
+
+From `tests/test_dispatcher.py`:
+- Use `ScriptedDispatcher` with `scripted_results` list for deterministic testing.
+- Use `tmp_path` fixture for temporary task files.
+
+For scheduler tests:
+- Create multiple task files with different file sets.
+- Use `time.sleep()` in mock dispatcher to verify concurrent execution.
+- Assert run state is not corrupted after concurrent writes.
+
+### Gotchas
+
+- **GIL and subprocess**: Python's GIL doesn't block subprocess calls — tmux sessions run truly parallel.
+- **tmux session limits**: Default tmux has session limits; ensure cleanup in `finally` blocks.
+- **File path normalization**: Use `Path.resolve()` for comparison to handle `./foo.py` vs `foo.py`.
+- **Deadlock risk**: Never hold lock while calling `dispatch_stage()` — lock only around state read/write.
+- **Blocking tag case sensitivity**: Normalize `blocking` tag to lowercase before comparison.
+
+### Scope Boundaries
+
+This task (Phase 4) should NOT touch:
+- **Account rotation** (Phase 3 — complete): `accounts.py` is already implemented.
+- **Additional providers** (Phase 3 — complete): All providers exist.
+- **Telegram notifications** (Phase 5): `notifier.py` not yet created.
+- **Smoke tests** (Phase 5): `smoke.py` not yet created.
+- **Memory system** (Phase 6): `memory.py` not yet created.
+
+Phase 2 and Phase 3 are complete — dispatcher, providers, sessions, evaluator, commits are all available for use.

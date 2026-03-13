@@ -22,6 +22,23 @@
       "config_overrides": {}
     }
   },
+  "fallback_chains": {
+    "planner": [
+      {"alias": "gemini", "model": "gemini-3-flash-preview", "config_overrides": {}},
+      {"alias": "kimi", "model": "kimi-k2.5", "config_overrides": {}},
+      {"alias": "haiku", "model": null, "config_overrides": {}},
+      {"alias": "kimi", "model": "minimax", "config_overrides": {}}
+    ],
+    "coder": [
+      {"alias": "codex", "model": null, "config_overrides": {"model_reasoning_effort": "medium"}},
+      {"alias": "sonnet", "model": null, "config_overrides": {}},
+      {"alias": "glm", "model": null, "config_overrides": {}}
+    ],
+    "auditor": [
+      {"alias": "opus", "model": null, "config_overrides": {}},
+      {"alias": "codex-xhigh", "model": null, "config_overrides": {}}
+    ]
+  },
   "stage_routing": {
     "plan": {
       "agent": "planner",

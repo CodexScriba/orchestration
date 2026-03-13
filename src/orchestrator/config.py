@@ -10,6 +10,7 @@ from orchestrator.models import (
     AccountsConfig,
     AuditStageRoutingConfig,
     CodeStageRoutingConfig,
+    FallbackChainEntry,
     LoggingConfig,
     NotificationConfig,
     OrchestratorConfig,
@@ -56,9 +57,17 @@ def load_config(path: str | Path = "config.json") -> OrchestratorConfig:
     if not isinstance(raw_config, dict):
         raise ConfigError("Invalid config type for <root>: expected object")
 
+    raw_fallback_chains = raw_config.get("fallback_chains")
+    fallback_chains = (
+        _parse_fallback_chains(raw_fallback_chains)
+        if isinstance(raw_fallback_chains, Mapping)
+        else {}
+    )
+
     return OrchestratorConfig(
         schema_version=_require_int(raw_config, "schema_version"),
         providers=_parse_providers(_require_mapping(raw_config, "providers")),
+        fallback_chains=fallback_chains,
         stage_routing=_parse_stage_routing(_require_mapping(raw_config, "stage_routing")),
         timeouts=_parse_timeouts(_require_mapping(raw_config, "timeouts")),
         retry_policy=_parse_retry_policy(_require_mapping(raw_config, "retry_policy"), "retry_policy"),
@@ -86,6 +95,35 @@ def _parse_providers(raw_providers: Mapping[str, object]) -> dict[str, ProviderA
             ),
         )
     return providers
+
+
+def _parse_fallback_chains(
+    raw_chains: Mapping[str, object],
+) -> dict[str, list[FallbackChainEntry]]:
+    chains: dict[str, list[FallbackChainEntry]] = {}
+    for stage_key, raw_list in raw_chains.items():
+        if not isinstance(raw_list, list):
+            raise ConfigError(
+                f"Invalid config type for fallback_chains.{stage_key}: expected list"
+            )
+        entries: list[FallbackChainEntry] = []
+        for i, item in enumerate(raw_list):
+            item_path = f"fallback_chains.{stage_key}[{i}]"
+            if not isinstance(item, Mapping):
+                raise ConfigError(f"Invalid config type for {item_path}: expected object")
+            entries.append(
+                FallbackChainEntry(
+                    alias=_require_str(item, "alias", item_path),
+                    model=_require_optional_str(item, "model", item_path) if "model" in item else None,
+                    config_overrides=(
+                        _require_string_key_dict(item, "config_overrides", item_path)
+                        if "config_overrides" in item
+                        else {}
+                    ),
+                )
+            )
+        chains[stage_key] = entries
+    return chains
 
 
 def _parse_stage_routing(

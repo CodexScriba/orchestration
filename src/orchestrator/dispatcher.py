@@ -9,10 +9,18 @@ from orchestrator.commits import commit_after_audit
 from orchestrator.config import OrchestratorConfig, load_config
 from orchestrator.evaluator import evaluate_stage_result
 from orchestrator.logger import JsonlLogger
-from orchestrator.models import RunState, StageResult, TaskRunState
+import logging
+
+from orchestrator.models import FallbackChainEntry, ProviderAliasConfig, RunState, StageResult, TaskRunState
 from orchestrator.prompts import assemble_prompt
+from orchestrator.providers.base import BaseProvider, ProviderError
+from orchestrator.providers.claude import ClaudeProvider
 from orchestrator.providers.codex import CodexProvider
+from orchestrator.providers.gemini import GeminiProvider
+from orchestrator.providers.qwen import QwenProvider
 from orchestrator.scanner import discover_task_files, parse_task_file
+
+_logger = logging.getLogger(__name__)
 from orchestrator.state import append_recent_event, save_run_state, write_handoff_readme
 
 STAGE_PROVIDER_KEYS = {
@@ -39,15 +47,12 @@ class Dispatcher:
         self.logger = logger or JsonlLogger(self.repo_root / ".kanban2code" / "runs" / "events.jsonl")
 
     def dispatch_stage(self, *, task_path: Path, run_id: str) -> StageResult:
-        """Run one stage for a task and evaluate the outcome."""
+        """Run one stage for a task using fallback chain, evaluate the outcome."""
 
         before = parse_task_file(task_path)
         stage = before.stage
         provider_key = STAGE_PROVIDER_KEYS[stage]
-        alias_config = self.config.providers[provider_key]
-        provider = self._build_provider(alias_config.alias, alias_config)
         output_dir = self.repo_root / ".kanban2code" / "runs" / run_id / before.task_id / stage
-        session_name = provider.session_manager.create_session_name(run_id, before.task_id, stage)
 
         prompt = assemble_prompt(
             repo_root=self.repo_root,
@@ -56,23 +61,92 @@ class Dispatcher:
             run_id=run_id,
             current_stage=stage,
         )
-        invocation = provider.invoke(
-            prompt=prompt,
-            task_path=task_path,
-            output_dir=output_dir / session_name,
-            timeouts=self.config.timeouts[stage],
-        )
+
+        chain = self._get_fallback_chain(provider_key)
+        last_invocation = None
+
+        for entry in chain:
+            alias_config = ProviderAliasConfig(
+                alias=entry.alias,
+                model=entry.model,
+                config_overrides=entry.config_overrides,
+            )
+            try:
+                provider = self._build_provider(entry.alias, alias_config)
+            except (ValueError, ProviderError) as exc:
+                _logger.warning("Skipping provider %r: %s", entry.alias, exc)
+                continue
+
+            session_name = provider.session_manager.create_session_name(
+                run_id, before.task_id, stage
+            )
+            invocation = provider.invoke(
+                prompt=prompt,
+                task_path=task_path,
+                output_dir=output_dir / session_name,
+                timeouts=self.config.timeouts[stage],
+            )
+            last_invocation = invocation
+            _logger.info(
+                "Provider %r used for stage %r (ok=%s)", entry.alias, stage, invocation.ok
+            )
+
+            if invocation.ok:
+                after = parse_task_file(task_path)
+                return evaluate_stage_result(
+                    config=self.config,
+                    stage=stage,
+                    before=before,
+                    after=after,
+                    invocation=invocation,
+                    provider_key=provider_key,
+                    provider_alias=entry.alias,
+                    provider_model=entry.model or provider.provider_config.model,
+                )
+
+            _logger.warning(
+                "Provider %r failed for stage %r: %s — trying next in chain.",
+                entry.alias,
+                stage,
+                invocation.error_message,
+            )
+
+        # All providers in chain failed; evaluate with the last invocation result
+        if last_invocation is None:
+            # No provider could even be built
+            from orchestrator.models import InvocationResult  # noqa: PLC0415
+            last_invocation = InvocationResult(
+                ok=False,
+                error_message=f"No provider available for stage {stage!r}.",
+            )
         after = parse_task_file(task_path)
         return evaluate_stage_result(
             config=self.config,
             stage=stage,
             before=before,
             after=after,
-            invocation=invocation,
+            invocation=last_invocation,
             provider_key=provider_key,
-            provider_alias=alias_config.alias,
-            provider_model=alias_config.model or provider.provider_config.model,
+            provider_alias=chain[-1].alias if chain else "",
+            provider_model=None,
         )
+
+    def _get_fallback_chain(self, provider_key: str) -> list[FallbackChainEntry]:
+        """Return the fallback chain for a provider key.
+
+        Falls back to the single provider from config.providers when no chain is defined.
+        """
+        if provider_key in self.config.fallback_chains:
+            return self.config.fallback_chains[provider_key]
+
+        alias_config = self.config.providers[provider_key]
+        return [
+            FallbackChainEntry(
+                alias=alias_config.alias,
+                model=alias_config.model,
+                config_overrides=alias_config.config_overrides,
+            )
+        ]
 
     def run(self, *, ordered_tasks: list[Path] | None = None, run_state: RunState | None = None) -> RunState:
         """Run queued tasks until completion, block, or handoff."""
@@ -161,13 +235,49 @@ class Dispatcher:
         task_files = discover_task_files(kanban_root)
         return [path for path in task_files if parse_task_file(path).stage != "completed"]
 
-    def _build_provider(self, alias: str, alias_config) -> CodexProvider:
+    def _build_provider(self, alias: str, alias_config: ProviderAliasConfig) -> BaseProvider:
+        """Build the appropriate provider for the given alias.
+
+        Provider type is determined by loading the frontmatter config and
+        inspecting the 'provider' field, falling back to alias prefix matching.
+        """
+        provider_dir = self.repo_root / ".kanban2code" / "_providers"
+        config_path = provider_dir / f"{alias}.md"
+
+        # Determine provider type from frontmatter when available
+        if config_path.exists():
+            from orchestrator.scanner import split_frontmatter  # noqa: PLC0415
+            metadata, _ = split_frontmatter(config_path.read_text(encoding="utf-8"))
+            provider_type = str(metadata.get("provider", "")).strip().lower()
+            cli = str(metadata.get("cli", "")).strip().lower()
+
+            if provider_type == "anthropic" or cli == "claude":
+                return ClaudeProvider(
+                    repo_root=self.repo_root,
+                    alias=alias,
+                    alias_config=alias_config,
+                )
+            if provider_type == "google" or cli == "gemini":
+                return GeminiProvider(
+                    repo_root=self.repo_root,
+                    alias=alias,
+                    alias_config=alias_config,
+                )
+            if provider_type in ("moonshot", "zai") or cli in ("kimi", "kilo"):
+                return QwenProvider(
+                    repo_root=self.repo_root,
+                    alias=alias,
+                    alias_config=alias_config,
+                )
+
+        # Fall back to alias prefix matching for backward compatibility
         if alias.startswith("codex"):
             return CodexProvider(
                 repo_root=self.repo_root,
                 alias=alias,
                 alias_config=alias_config,
             )
+
         raise ValueError(f"Unsupported provider alias: {alias}")
 
     def _new_run_state(self, ordered_tasks: list[Path] | None) -> RunState:

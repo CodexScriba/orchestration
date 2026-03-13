@@ -141,11 +141,21 @@ class LoggingConfig:
 
 
 @dataclass(slots=True)
+class FallbackChainEntry:
+    """A single provider entry in a fallback chain."""
+
+    alias: str = ""
+    model: str | None = None
+    config_overrides: dict[str, object] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
 class OrchestratorConfig:
     """Top-level typed configuration for the orchestrator."""
 
     schema_version: int = 1
     providers: dict[str, ProviderAliasConfig] = field(default_factory=dict)
+    fallback_chains: dict[str, list[FallbackChainEntry]] = field(default_factory=dict)
     stage_routing: dict[
         str,
         PlanStageRoutingConfig | CodeStageRoutingConfig | AuditStageRoutingConfig,
