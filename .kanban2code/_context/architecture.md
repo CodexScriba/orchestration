@@ -15,6 +15,25 @@ See: [docs/architecture.md](docs/architecture.md) for the full architecture docu
 
 ## Accepted Task Updates
 
+- date: 2026-03-13
+  - task: `task3-account-rotation-and-multi-provider`
+  - files-updated:
+    - `config.json` (added per-stage fallback chains and Codex account-pool configuration)
+    - `src/orchestrator/config.py` (parses fallback-chain configuration into typed models)
+    - `src/orchestrator/models.py` (added `AccountsConfig` and `FallbackChainEntry` config types)
+    - `src/orchestrator/dispatcher.py` (dispatches through ordered provider fallback chains, resolves provider implementations by frontmatter, rotates Codex accounts per task, and persists provider metadata in run events)
+    - `src/orchestrator/providers/__init__.py` (exports the expanded provider set)
+  - new-files-created:
+    - `src/orchestrator/accounts.py` - `AccountManager` for Codex auth rotation, health checks, and per-task account assignment
+    - `src/orchestrator/providers/claude.py` - Claude CLI provider for Anthropic models
+    - `src/orchestrator/providers/gemini.py` - Gemini CLI provider for Google models
+    - `src/orchestrator/providers/qwen.py` - Qwen-family CLI provider for Kimi/GLM-style aliases
+    - `tests/test_accounts.py` - Unit tests for account rotation and health-check behavior
+    - `tests/test_new_providers.py` - Tests for Claude, Gemini, and Qwen provider command construction and invocation handling
+    - `tests/test_routing.py` - Routing/fallback tests covering provider resolution, account-rotation failure handling, and persisted provider metadata
+  - tests-added:
+    - 38 targeted orchestrator tests passing for accounts, providers, routing, config, and dispatcher behavior
+
 - date: 2026-02-11
   - task: `task1.1-add-agent-and-attempts-fields-to-task-interface`
   - files-updated:

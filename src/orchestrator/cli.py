@@ -6,7 +6,10 @@ import argparse
 from collections.abc import Sequence
 from pathlib import Path
 
+from orchestrator.config import load_config
 from orchestrator.dispatcher import Dispatcher
+from orchestrator.scheduler import ConcurrentScheduler
+from orchestrator.smoke import SmokeTester
 from orchestrator.state import load_run_state, render_run_summary
 
 
@@ -22,7 +25,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_run_command(subparsers)
     _add_continue_command(subparsers)
     _add_status_command(subparsers)
-    _add_stub_command(subparsers, "smoke-test", cmd_smoke_test, "Run provider smoke tests.")
+    _add_smoke_test_command(subparsers)
 
     return parser
 
@@ -44,11 +47,24 @@ def cmd_run(args: argparse.Namespace) -> int:
     """Handle the run subcommand."""
 
     repo_root = Path(args.repo_root).resolve()
-    dispatcher = Dispatcher(
-        repo_root=repo_root,
-        run_state_path=Path(args.state_path).resolve(),
-    )
-    run_state = dispatcher.run()
+    state_path = Path(args.state_path).resolve()
+    config = load_config(repo_root / "config.json")
+
+    if args.sequential or not config.scheduler.enabled:
+        dispatcher = Dispatcher(
+            repo_root=repo_root,
+            config=config,
+            run_state_path=state_path,
+        )
+        run_state = dispatcher.run()
+    else:
+        scheduler = ConcurrentScheduler(
+            repo_root=repo_root,
+            config=config,
+            run_state_path=state_path,
+        )
+        run_state = scheduler.run()
+
     print(render_run_summary(run_state))
     return 0
 
@@ -58,11 +74,24 @@ def cmd_continue(args: argparse.Namespace) -> int:
 
     repo_root = Path(args.repo_root).resolve()
     state_path = Path(args.state_path).resolve()
-    dispatcher = Dispatcher(
-        repo_root=repo_root,
-        run_state_path=state_path,
-    )
-    run_state = dispatcher.resume(load_run_state(state_path))
+    config = load_config(repo_root / "config.json")
+    saved_state = load_run_state(state_path)
+
+    if args.sequential or not config.scheduler.enabled:
+        dispatcher = Dispatcher(
+            repo_root=repo_root,
+            config=config,
+            run_state_path=state_path,
+        )
+        run_state = dispatcher.resume(saved_state)
+    else:
+        scheduler = ConcurrentScheduler(
+            repo_root=repo_root,
+            config=config,
+            run_state_path=state_path,
+        )
+        run_state = scheduler.run(run_state=saved_state)
+
     print(render_run_summary(run_state))
     return 0
 
@@ -75,11 +104,23 @@ def cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_smoke_test(_args: argparse.Namespace) -> int:
+def cmd_smoke_test(args: argparse.Namespace) -> int:
     """Handle the smoke-test subcommand."""
 
-    print("Smoke-test command is not implemented yet.")
-    return 0
+    repo_root = Path(args.repo_root).resolve()
+    dispatcher = Dispatcher(
+        repo_root=repo_root,
+        run_state_path=Path(args.state_path).resolve(),
+    )
+    tester = SmokeTester(dispatcher)
+    results = tester.run_all()
+    return 0 if all(results.values()) else 1
+
+
+def _add_smoke_test_command(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    subparser = subparsers.add_parser("smoke-test", help="Run provider smoke tests.")
+    _add_common_paths(subparser)
+    subparser.set_defaults(handler=cmd_smoke_test)
 
 
 def _add_stub_command(
@@ -124,4 +165,9 @@ def _add_common_paths(parser: argparse.ArgumentParser) -> None:
         "--state-path",
         default=".kanban2code/runs/latest.json",
         help="Path to the persisted run state.",
+    )
+    parser.add_argument(
+        "--sequential",
+        action="store_true",
+        help="Run tasks sequentially instead of concurrently.",
     )

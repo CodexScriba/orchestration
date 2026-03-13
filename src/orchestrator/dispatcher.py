@@ -13,14 +13,21 @@ from orchestrator.config import OrchestratorConfig, load_config
 from orchestrator.evaluator import evaluate_stage_result
 from orchestrator.logger import JsonlLogger
 from orchestrator.models import FallbackChainEntry, ProviderAliasConfig, RunState, StageResult, TaskRunState
+from orchestrator.notifier import Notifier
 from orchestrator.prompts import assemble_prompt
 from orchestrator.providers.base import BaseProvider, ProviderError
 from orchestrator.providers.claude import ClaudeProvider
 from orchestrator.providers.codex import CodexProvider
 from orchestrator.providers.gemini import GeminiProvider
 from orchestrator.providers.qwen import QwenProvider
-from orchestrator.scanner import discover_task_files, parse_task_file
-from orchestrator.state import append_recent_event, save_run_state, write_handoff_readme
+from orchestrator.scanner import discover_task_files, parse_task_file, scan_tasks
+from orchestrator.state import (
+    append_recent_event,
+    build_detailed_board_state,
+    render_board_summary,
+    save_run_state,
+    write_handoff_readme,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -47,6 +54,7 @@ class Dispatcher:
         self.config = config or load_config(self.repo_root / "config.json")
         self.run_state_path = run_state_path or self.repo_root / ".kanban2code" / "runs" / "latest.json"
         self.logger = logger or JsonlLogger(self.repo_root / ".kanban2code" / "runs" / "events.jsonl")
+        self.notifier = Notifier(self.config)
         pool = self.config.accounts.codex_pool
         self.account_manager = account_manager or (
             AccountManager(pool=pool) if pool else None
@@ -353,17 +361,47 @@ class Dispatcher:
         )
         append_recent_event(run_state, event, self.config.logging.retain_recent_events)
 
+        # Notify on stage change (success) or blocked
+        if result.kind == "success":
+            self.notifier.notify_stage_change(result)
+        elif result.kind == "blocked":
+            self.notifier.notify_escalation(result.task_id, result.kind, result.error_message or "Unknown block")
+
+        self._update_board_state()
+
+    def _update_board_state(self) -> None:
+        """Update the global board state JSON and MD files."""
+        kanban_root = self.repo_root / ".kanban2code"
+        tasks = scan_tasks(kanban_root)
+
+        # Update JSON
+        board_state_path = kanban_root / "board_state.json"
+        detailed_state = build_detailed_board_state(tasks)
+        import json  # noqa: PLC0415
+        board_state_path.write_text(
+            json.dumps(detailed_state, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
+        # Update MD
+        board_summary_path = kanban_root / "BOARD.md"
+        summary = render_board_summary(tasks)
+        board_summary_path.write_text(summary, encoding="utf-8")
+
     def _handoff(self, run_state: RunState, task_path: Path, reason: str) -> RunState:
         run_state.status = "handoff_required"
         run_state.last_error = reason
+        task_snapshot = parse_task_file(task_path)
         handoff_path = self.repo_root / ".kanban2code" / "runs" / run_state.run_id / "HANDOFF.md"
         write_handoff_readme(
             path=handoff_path,
             run_state=run_state,
-            task_snapshot=parse_task_file(task_path),
+            task_snapshot=task_snapshot,
             reason=reason,
         )
         save_run_state(self.run_state_path, run_state)
+        self.notifier.notify_escalation(task_snapshot.task_id, "handoff_required", reason)
+        self._update_board_state()
         return run_state
 
 

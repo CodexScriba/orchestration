@@ -1,0 +1,5 @@
+Reading prompt from stdin...
+{"type":"thread.started","thread_id":"019ce919-6eed-70e3-850a-fbfbdc98d25c"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"hello"}}
+{"type":"turn.completed","usage":{"input_tokens":7591,"cached_input_tokens":2560,"output_tokens":22}}

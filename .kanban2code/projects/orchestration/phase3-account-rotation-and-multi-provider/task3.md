@@ -1,5 +1,5 @@
 ---
-stage: audit
+stage: completed
 tags: [feature, p3]
 agent: auditor
 contexts: [skills/python-core-skills]
@@ -497,36 +497,37 @@ This task is standalone in phase3. No sibling tasks exist. All subtasks (3.1-3.4
 
 ## Review
 
-**Rating: 7/10**
+**Rating: 9/10**
 
-**Verdict: NEEDS WORK**
+**Verdict: ACCEPTED**
 
 ### Summary
-The previous routing and logging gaps are fixed, and the targeted provider/routing test suite now passes. One important behavior is still wrong, though: when account rotation exhausts the Codex pool, the dispatcher logs a warning and continues anyway instead of escalating the task.
+The previously flagged dispatcher/account-rotation issue is fixed, and the fallback-routing/provider logging changes now hang together cleanly. The task meets the acceptance bar with direct regression coverage for the exhausted-account path.
 
 ### Findings
 
 #### Blockers
-- [x] Account-rotation failure is swallowed instead of escalating: `AccountManager.get_account_for_task()` already performs round-robin fallback and raises when the entire pool is unhealthy, but `dispatch_stage()` catches that exception and still invokes Codex with whatever auth state was already on disk. That violates the task rule "if all fail, escalate" and can run a task against the wrong account. - `src/orchestrator/dispatcher.py:86`
+- [ ] None.
 
 #### High Priority
 - [ ] None.
 
 #### Medium Priority
-- [x] The new tests cover the happy path for `AccountManager` invocation, but there is still no dispatcher-level test that verifies an exhausted account pool produces a stage failure or handoff. That leaves the remaining blocker unguarded. - `tests/test_routing.py:311`
+- [ ] None.
 
 #### Low Priority / Nits
 - [ ] None.
 
 ### Test Assessment
-- Coverage: Needs improvement
-- Missing tests: Dispatcher test for "all accounts failed" causing transport failure/handoff instead of continuing with Codex; integration test showing the same assigned Codex account survives an audit bounce end-to-end
+- Coverage: Adequate
+- Missing tests: No blocking gaps for acceptance; a future end-to-end run-loop test for account persistence across a full audit bounce would add confidence
 
 ### What's Good
-- [ ] The prior issues around frontmatter-based OpenAI provider resolution and persisted provider alias/model logging are fixed, and the targeted suites for accounts/providers/routing now pass.
+- [ ] The dispatcher now treats exhausted Codex account rotation as a real transport failure, provider selection is resolved correctly from frontmatter, and provider alias/model metadata is persisted into structured run logs.
+- [ ] The targeted suite covering accounts, new providers, routing, config, and dispatcher behavior passes cleanly, including the new exhausted-account regression test.
 
 ### Recommendations
-- [ ] Treat `AccountError` from `get_account_for_task()` as a real stage failure so the normal retry/handoff path can escalate when every Codex account is unhealthy, then add a regression test for that branch.
+- [ ] Consider adding one higher-level `Dispatcher.run()` integration test that proves a task keeps the same Codex account through an audit bounce cycle.
 
 ---
 

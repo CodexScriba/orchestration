@@ -156,6 +156,7 @@ class TaskFileInfo:
     task_id: str = ""
     file_paths: set[Path] = field(default_factory=set)
     has_blocking_tag: bool = False
+    depends_on: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -273,3 +274,12 @@ class RunState:
     current_task: str | None = None
     current_stage: str | None = None
     last_error: str | None = None
+
+
+@dataclass(slots=True)
+class TaskExecutionResult:
+    """Result of executing a task through all its stages."""
+
+    task_key: str = ""
+    stage_result: StageResult | None = None
+    task_state: TaskRunState = field(default_factory=TaskRunState)

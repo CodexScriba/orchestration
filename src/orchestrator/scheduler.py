@@ -2,27 +2,27 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 import logging
 import os
 import re
 import threading
-from concurrent.futures import Future, ThreadPoolExecutor, as_completed
-from dataclasses import asdict
+import time
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from orchestrator.config import OrchestratorConfig, load_config
 from orchestrator.logger import JsonlLogger
 from orchestrator.models import (
-    RunEvent,
     RunState,
-    SchedulerConfig,
     StageResult,
+    TaskExecutionResult,
     TaskFileInfo,
     TaskRunState,
     TaskSnapshot,
 )
-from orchestrator.scanner import parse_task_file
+from orchestrator.scanner import discover_task_files, parse_task_file
 from orchestrator.state import append_recent_event, save_run_state
 
 if TYPE_CHECKING:
@@ -55,7 +55,7 @@ class ThreadSafeStateWriter:
     def load_and_update(
         self,
         task_key: str,
-        updater: callable,
+        updater: Callable[[TaskRunState], None],
     ) -> RunState:
         """Load state, apply update to a specific task, and save.
 
@@ -212,23 +212,33 @@ def _resolve_path(path_str: str, repo_root: Path) -> Path | None:
 
 
 def get_task_file_info(task_snapshot: TaskSnapshot, repo_root: Path) -> TaskFileInfo:
-    """Get file information for a task including blocking status.
+    """Get file information for a task including blocking status and dependencies.
 
     Args:
         task_snapshot: The task snapshot.
         repo_root: The repository root.
 
     Returns:
-        TaskFileInfo with file paths and blocking status.
+        TaskFileInfo with file paths, blocking status, and dependencies.
     """
     file_paths = extract_file_paths_from_task(task_snapshot, repo_root)
     has_blocking_tag = "blocking" in [tag.lower() for tag in task_snapshot.tags]
+
+    # Extract dependencies from metadata
+    depends_on: list[str] = []
+    deps_value = task_snapshot.metadata.get("depends_on")
+    if deps_value is not None:
+        if isinstance(deps_value, str):
+            depends_on = [deps_value]
+        elif isinstance(deps_value, list):
+            depends_on = [str(d) for d in deps_value if isinstance(d, str)]
 
     return TaskFileInfo(
         task_path=task_snapshot.path,
         task_id=task_snapshot.task_id,
         file_paths=file_paths,
         has_blocking_tag=has_blocking_tag,
+        depends_on=depends_on,
     )
 
 
@@ -263,6 +273,7 @@ class ConcurrentScheduler:
         self._conflict_detector = ConflictDetector(self.repo_root)
         self._executor: ThreadPoolExecutor | None = None
         self._futures: dict[str, Future] = {}
+        self._blocking_task_keys: set[str] = set()
         self._lock = threading.Lock()
 
     @property
@@ -309,6 +320,7 @@ class ConcurrentScheduler:
 
         active_run_state = run_state or self.dispatcher._new_run_state(ordered_tasks)
         ordered_task_paths = [Path(path) for path in active_run_state.ordered_tasks]
+        self._state_writer.save(active_run_state)
 
         max_workers = self._compute_max_workers(len(ordered_task_paths))
         self._executor = ThreadPoolExecutor(max_workers=max_workers)
@@ -334,39 +346,56 @@ class ConcurrentScheduler:
             Final run state.
         """
         pending_tasks: list[Path] = list(ordered_task_paths)
-        completed_tasks: set[str] = set()
+        completed_task_ids = self._discover_completed_task_ids()
 
         while pending_tasks or self._futures:
             # Collect completed futures
-            self._collect_completed_futures(run_state, completed_tasks)
+            self._collect_completed_futures(run_state, completed_task_ids)
+
+            if run_state.status == "handoff_required":
+                if self._futures:
+                    time.sleep(0.05)
+                    continue
+                break
 
             # Submit new tasks if we have capacity
-            self._submit_eligible_tasks(run_state, pending_tasks)
+            submitted_count = self._submit_eligible_tasks(
+                run_state,
+                pending_tasks,
+                completed_task_ids,
+            )
 
             # Wait a bit if we're at capacity or waiting for conflicts
             if self._futures and not pending_tasks:
-                # All tasks submitted, wait for completion
-                import time  # noqa: PLC0415
-
-                time.sleep(0.1)
+                time.sleep(0.05)
             elif not self._futures and pending_tasks:
-                # No running tasks but pending - check for blocking
-                _logger.warning("Tasks pending but no capacity to run them")
+                resolved_count = self._resolve_stalled_tasks(
+                    run_state,
+                    pending_tasks,
+                    completed_task_ids,
+                )
+                if resolved_count == 0 and submitted_count == 0:
+                    _logger.warning("Tasks pending but no capacity to run them")
+                    time.sleep(0.05)
 
-        run_state.status = "completed"
+        if run_state.status != "handoff_required":
+            run_state.status = "completed"
+        run_state.current_task = None
+        run_state.current_stage = None
         self._state_writer.save(run_state)
         return run_state
 
     def _collect_completed_futures(
         self,
         run_state: RunState,
-        completed_tasks: set[str],
+        completed_task_ids: set[str],
     ) -> None:
         """Collect results from completed futures.
 
         Args:
             run_state: The run state to update.
-            completed_tasks: Set of completed task keys.
+            completed_task_ids: Set of completed task IDs.
+            running_task_ids: Set of currently running task IDs.
         """
         with self._lock:
             done_futures = []
@@ -379,32 +408,56 @@ class ConcurrentScheduler:
                 self._conflict_detector.unregister_task(task_key)
 
                 try:
-                    result = future.result()
-                    self._handle_task_result(run_state, task_key, result)
-                    completed_tasks.add(task_key)
+                    exec_result = future.result()
+                    task_id = Path(task_key).stem
+
+                    # Update run_state with the task's final state
+                    run_state.task_states[task_key] = exec_result.task_state
+
+                    if exec_result.task_state.status == "completed":
+                        completed_task_ids.add(task_id)
+                    elif exec_result.task_state.status == "handoff_required":
+                        reason = exec_result.task_state.last_error or "Task execution requires handoff."
+                        self._trigger_handoff(run_state, Path(task_key), reason)
+
+                    self._handle_task_result(run_state, task_key, exec_result)
                 except Exception as exc:
                     _logger.exception("Task %s raised exception", task_key)
+                    task_state = run_state.task_states.setdefault(task_key, TaskRunState())
+                    task_state.status = "handoff_required"
+                    task_state.last_error = str(exc)
                     self._handle_task_error(run_state, task_key, str(exc))
+                    self._trigger_handoff(
+                        run_state,
+                        Path(task_key),
+                        f"Concurrent worker failed for {Path(task_key).name}: {exc}",
+                    )
+
+            if done_futures:
+                self._state_writer.save(run_state)
 
     def _submit_eligible_tasks(
         self,
         run_state: RunState,
         pending_tasks: list[Path],
-    ) -> None:
+        completed_task_ids: set[str],
+    ) -> int:
         """Submit tasks that are eligible to run.
 
         Args:
             run_state: The run state.
             pending_tasks: List of tasks not yet submitted.
+            completed_task_ids: Set of completed task IDs.
+            running_task_ids: Set of currently running task IDs.
         """
         if not self._executor:
-            return
+            return 0
 
         max_concurrent = self._compute_max_workers(len(pending_tasks) + len(self._futures))
         available_slots = max_concurrent - len(self._futures)
 
         if available_slots <= 0:
-            return
+            return 0
 
         submitted = []
         for task_path in pending_tasks:
@@ -426,6 +479,21 @@ class ConcurrentScheduler:
                 available_slots -= 1
                 break
 
+            # Check for explicit dependencies
+            if task_info.depends_on:
+                unmet_deps = [
+                    dep_id
+                    for dep_id in task_info.depends_on
+                    if dep_id not in completed_task_ids
+                ]
+                if unmet_deps:
+                    _logger.info(
+                        "[SCHEDULER:DEP] %s waiting for dependencies: %s",
+                        task_snapshot.task_id,
+                        unmet_deps,
+                    )
+                    continue
+
             # Check for file conflicts
             if self._conflict_detector.has_conflict(task_info.file_paths):
                 conflicts = self._conflict_detector.get_conflicting_tasks(task_info.file_paths)
@@ -445,6 +513,8 @@ class ConcurrentScheduler:
         for task_path in submitted:
             pending_tasks.remove(task_path)
 
+        return len(submitted)
+
     def _submit_task(
         self,
         task_key: str,
@@ -457,6 +527,7 @@ class ConcurrentScheduler:
             task_key: The task path string.
             task_info: File info for conflict tracking.
             run_state: The run state.
+            running_task_ids: Set of currently running task IDs.
         """
         if not self._executor:
             return
@@ -486,7 +557,7 @@ class ConcurrentScheduler:
         with self._lock:
             self._futures[task_key] = future
 
-    def _run_task_stages(self, *, task_path: Path, run_id: str) -> StageResult:
+    def _run_task_stages(self, *, task_path: Path, run_id: str) -> TaskExecutionResult:
         """Run all stages for a single task.
 
         This is the worker function executed in a thread.
@@ -496,85 +567,127 @@ class ConcurrentScheduler:
             run_id: The run ID.
 
         Returns:
-            The final stage result.
+            TaskExecutionResult with final stage result and task state.
         """
+        from orchestrator.commits import commit_after_audit  # noqa: PLC0415
+
         task_key = str(task_path)
         task_state = TaskRunState()
         result: StageResult | None = None
 
-        while True:
-            snapshot = parse_task_file(task_path)
+        try:
+            while True:
+                snapshot = parse_task_file(task_path)
 
-            if snapshot.stage == "completed":
-                task_state.status = "completed"
-                break
-
-            result = self.dispatcher.dispatch_stage(
-                task_path=task_path,
-                run_id=run_id,
-            )
-
-            # Update state under lock
-            self._state_writer.load_and_update(
-                task_key,
-                lambda ts: self._apply_stage_result(ts, result),
-            )
-
-            if result.kind == "success":
-                if result.after_stage == "completed":
+                if snapshot.stage == "completed":
                     task_state.status = "completed"
+                    self._persist_task_state(task_key, task_state)
                     break
-                continue
 
-            if result.kind == "quality_failure":
-                task_state.audit_failures += 1
-                if task_state.audit_failures > self.config.retry_policy.audit_failure_cycles_before_handoff:
+                result = self.dispatcher.dispatch_stage(
+                    task_path=task_path,
+                    run_id=run_id,
+                )
+
+                # Update local task state.
+                task_state.last_stage = result.stage
+                task_state.last_error = result.error_message
+                task_state.status = result.kind
+
+                if result.kind == "success":
+                    if result.stage == "audit" and result.after_stage == "completed":
+                        commit_after_audit(
+                            repo_root=self.repo_root,
+                            task_path=task_path,
+                            rating=result.audit_rating or 0,
+                            model=result.provider_model,
+                            bounces=task_state.audit_failures,
+                        )
+                    if result.after_stage == "completed":
+                        task_state.status = "completed"
+                        self._persist_task_state(task_key, task_state)
+                        break
+                    self._persist_task_state(task_key, task_state)
+                    continue
+
+                if result.kind == "quality_failure":
+                    task_state.audit_failures += 1
+                    if (
+                        task_state.audit_failures
+                        > self.config.retry_policy.audit_failure_cycles_before_handoff
+                    ):
+                        task_state.status = "handoff_required"
+                        task_state.last_error = (
+                            f"Audit bounce limit exceeded for {task_path.name}."
+                        )
+                        self._persist_task_state(task_key, task_state)
+                        break
+                    self._persist_task_state(task_key, task_state)
+                    continue
+
+                if result.kind == "blocked":
+                    task_state.status = "blocked"
+                    self._persist_task_state(task_key, task_state)
+                    break
+
+                attempts = task_state.transport_attempts.get(result.stage, 0) + 1
+                task_state.transport_attempts[result.stage] = attempts
+                if attempts >= self.config.retry_policy.transport_max_attempts:
                     task_state.status = "handoff_required"
+                    task_state.last_error = (
+                        f"Transport retries exhausted for stage {result.stage}."
+                    )
+                    self._persist_task_state(task_key, task_state)
                     break
-                continue
 
-            if result.kind == "blocked":
-                task_state.status = "blocked"
-                break
+                self._persist_task_state(task_key, task_state)
+        finally:
+            if self.dispatcher.account_manager:
+                self.dispatcher.account_manager.release_task(task_path.stem)
 
-            # Transport failure
-            attempts = task_state.transport_attempts.get(result.stage, 0) + 1
-            task_state.transport_attempts[result.stage] = attempts
-            if attempts >= self.config.retry_policy.transport_max_attempts:
-                task_state.status = "handoff_required"
-                break
+        return TaskExecutionResult(
+            task_key=task_key,
+            stage_result=result or StageResult(kind="completed", stage="completed"),
+            task_state=task_state,
+        )
 
-        return result or StageResult(kind="completed", stage="completed")
+    def _persist_task_state(self, task_key: str, task_state: TaskRunState) -> None:
+        """Persist the latest task state under lock."""
 
-    def _apply_stage_result(self, task_state: TaskRunState, result: StageResult) -> None:
-        """Apply a stage result to task state.
+        self._state_writer.load_and_update(
+            task_key,
+            lambda persisted: self._copy_task_state(persisted, task_state),
+        )
 
-        Args:
-            task_state: The task state to update.
-            result: The stage result.
-        """
-        task_state.last_stage = result.stage
-        task_state.last_error = result.error_message
-        task_state.status = result.kind
+    def _copy_task_state(self, target: TaskRunState, source: TaskRunState) -> None:
+        """Copy all task-state fields into a persisted record."""
+
+        target.status = source.status
+        target.last_stage = source.last_stage
+        target.last_error = source.last_error
+        target.audit_failures = source.audit_failures
+        target.transport_attempts = dict(source.transport_attempts)
 
     def _handle_task_result(
         self,
         run_state: RunState,
         task_key: str,
-        result: StageResult,
+        exec_result: TaskExecutionResult,
     ) -> None:
         """Handle a completed task result.
 
         Args:
             run_state: The run state.
             task_key: The task path string.
-            result: The final stage result.
+            exec_result: The task execution result.
         """
+        result = exec_result.stage_result
+        task_status = exec_result.task_state.status
         event = self.logger.append(
             "task_complete",
-            f"{Path(task_key).name} -> {result.kind}",
+            f"{Path(task_key).name} -> {task_status}",
             task=task_key,
-            result=result.kind,
+            result=task_status,
         )
         append_recent_event(run_state, event, self.config.logging.retain_recent_events)
 
@@ -598,6 +711,70 @@ class ConcurrentScheduler:
             error=error_message,
         )
         append_recent_event(run_state, event, self.config.logging.retain_recent_events)
+
+    def _discover_completed_task_ids(self) -> set[str]:
+        """Discover completed task IDs across the Kanban workspace."""
+
+        completed_task_ids: set[str] = set()
+        kanban_root = self.repo_root / ".kanban2code"
+        for task_path in discover_task_files(kanban_root):
+            if parse_task_file(task_path).stage == "completed":
+                completed_task_ids.add(task_path.stem)
+        return completed_task_ids
+
+    def _resolve_stalled_tasks(
+        self,
+        run_state: RunState,
+        pending_tasks: list[Path],
+        completed_task_ids: set[str],
+    ) -> int:
+        """Block tasks whose dependencies cannot currently be satisfied."""
+
+        stalled_tasks: list[Path] = []
+        for task_path in pending_tasks:
+            task_info = get_task_file_info(parse_task_file(task_path), self.repo_root)
+            unmet_dependencies = [
+                dependency
+                for dependency in task_info.depends_on
+                if dependency not in completed_task_ids
+            ]
+            if not unmet_dependencies:
+                continue
+
+            task_key = str(task_path)
+            task_state = run_state.task_states.setdefault(task_key, TaskRunState())
+            task_state.status = "blocked"
+            task_state.last_error = (
+                "Unresolved dependencies: " + ", ".join(unmet_dependencies)
+            )
+            stalled_tasks.append(task_path)
+
+            event = self.logger.append(
+                "task_blocked",
+                f"{task_path.name} blocked by unresolved dependencies",
+                task=task_key,
+                dependencies=unmet_dependencies,
+            )
+            append_recent_event(run_state, event, self.config.logging.retain_recent_events)
+
+        for task_path in stalled_tasks:
+            pending_tasks.remove(task_path)
+
+        if stalled_tasks:
+            self._state_writer.save(run_state)
+
+        return len(stalled_tasks)
+
+    def _trigger_handoff(self, run_state: RunState, task_path: Path, reason: str) -> None:
+        """Promote the concurrent run into handoff-required state."""
+
+        if run_state.status == "handoff_required":
+            return
+
+        run_state.current_task = str(task_path)
+        task_state = run_state.task_states.get(str(task_path), TaskRunState())
+        run_state.current_stage = task_state.last_stage
+        self.dispatcher._handoff(run_state, task_path, reason)
 
     def _compute_max_workers(self, pending_count: int) -> int:
         """Compute the maximum number of concurrent workers.

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import asdict
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 
@@ -40,6 +41,79 @@ def build_board_state(tasks: Sequence[TaskSnapshot]) -> dict[str, dict[str, list
         for stage_name, stage_tasks in stage_index.items():
             board_state[project_name][stage_name] = [task.task_id for task in stage_tasks]
     return board_state
+
+
+def build_detailed_board_state(tasks: Sequence[TaskSnapshot]) -> dict[str, dict[str, list[dict]]]:
+    """Build a detailed board-state mapping for Kadee.
+
+    Args:
+        tasks: Ordered task snapshots.
+
+    Returns:
+        Nested mapping of project to stage to detailed task objects.
+    """
+
+    board_state: dict[str, dict[str, list[dict]]] = {}
+    for project_name, stage_index in build_board_index(tasks).items():
+        board_state[project_name] = {}
+        for stage_name, stage_tasks in stage_index.items():
+            detailed_tasks = []
+            for task in stage_tasks:
+                last_updated = (
+                    datetime.fromtimestamp(task.path.stat().st_mtime, timezone.utc)
+                    .isoformat()
+                    .replace("+00:00", "Z")
+                )
+                detailed_tasks.append(
+                    {
+                        "task_id": task.task_id,
+                        "title": _extract_title(task.body) or task.task_id,
+                        "agent": task.agent,
+                        "bounces": task.bounces,
+                        "last_updated": last_updated,
+                    }
+                )
+            board_state[project_name][stage_name] = detailed_tasks
+    return board_state
+
+
+def render_board_summary(tasks: Sequence[TaskSnapshot]) -> str:
+    """Render a human-readable markdown summary of the entire board.
+
+    Args:
+        tasks: Ordered task snapshots.
+
+    Returns:
+        Markdown summary string.
+    """
+
+    index = build_board_index(tasks)
+    lines = ["# Kanban Board Summary", ""]
+
+    if not index:
+        lines.append("*No tasks found.*")
+        return "\n".join(lines) + "\n"
+
+    for project, stages in index.items():
+        lines.append(f"## Project: {project}")
+        lines.append("")
+        for stage, stage_tasks in stages.items():
+            lines.append(f"### Stage: {stage}")
+            for task in stage_tasks:
+                title = _extract_title(task.body) or task.task_id
+                lines.append(f"- **{task.task_id}**: {title} (Agent: `{task.agent}`)")
+            lines.append("")
+
+    return "\n".join(lines) + "\n"
+
+
+def _extract_title(body: str) -> str | None:
+    """Extract the first H1 from a markdown body."""
+    for line in body.splitlines():
+        line = line.strip()
+        if line.startswith("# "):
+            return line[2:].strip()
+    return None
 
 
 def save_run_state(path: Path, run_state: RunState) -> None:

@@ -1,7 +1,7 @@
 ---
-stage: plan
+stage: code
 tags: [feature, p5]
-agent: planner
+agent: coder
 contexts: [skills/python-core-skills]
 ---
 
@@ -266,3 +266,73 @@ Implement a smoke test suite to verify provider health and connectivity.
 #### Context
 
 Phase 5: Communication and Monitoring
+
+## Refined Prompt
+Objective: Implement the communication and monitoring layer, including a Telegram notifier, board state visualization (JSON/MD), and a provider smoke test suite.
+
+Implementation approach:
+1. **Telegram Notifier**: Create `src/orchestrator/notifier.py` using `python-telegram-bot`. Implement `notify_stage_change` and `notify_escalation`. Load credentials from `OrchestratorConfig` (env vars: `ORCHESTRATOR_TELEGRAM_BOT_TOKEN`, `ORCHESTRATOR_TELEGRAM_CHAT_ID`). Ensure failures are logged but non-blocking.
+2. **Board State View**: Modify `src/orchestrator/state.py` to add `build_detailed_board_state` (returning the specified JSON structure) and `render_board_summary` (returning Markdown). Derive `title` from the first H1 in the task body and `last_updated` from file modification time.
+3. **Smoke Test Suite**: Create `src/orchestrator/smoke.py` with a `SmokeTester` class. It should iterate through configured providers, send a trivial prompt ("Say exactly: hello"), and verify the response.
+4. **Integration**: Update `src/orchestrator/dispatcher.py` to initialize the `Notifier` and trigger notifications/board state updates after each stage transition. Update `src/orchestrator/cli.py` to wire up the `smoke-test` command.
+
+Key decisions:
+- **Telegram Client**: Use `python-telegram-bot` as it's already a dependency and provides a clean async/sync interface.
+- **Board State Storage**: Save `board_state.json` and `BOARD.md` to `.kanban2code/` root for Kadee's accessibility.
+- **Smoke Test Scope**: Explicitly test Codex, Claude, Gemini, and Qwen as they are the primary providers in the architecture.
+
+Edge cases:
+- Telegram bot token/chat ID missing: Log a warning and skip notification.
+- Provider binary missing during smoke test: Report as a clear failure with a remediation hint.
+- Task file without H1: Use `task_id` (filename) as the fallback title.
+
+## Context
+
+### File Tree (scoped)
+- src/orchestrator/
+    - notifier.py             <- create
+    - smoke.py                <- create
+    - state.py                <- modify
+    - dispatcher.py           <- modify
+    - cli.py                  <- modify
+    - config.py               <- read-only reference
+    - models.py               <- read-only reference
+    - scanner.py              <- read-only reference
+    - providers/
+        - base.py             <- read-only reference
+
+### Architecture Excerpts
+- "Phase 5: Communication and Monitoring" focus on observability and health.
+- `Dispatcher` is the central hub for orchestration; notifications and state updates should hook in here.
+- `state.py` is the source of truth for translating raw snapshots into structured status.
+
+### Skill Excerpts
+Python Core Skills (PEP 8 + Modern Best Practices):
+- Use snake_case for functions and variables.
+- Always include type hints.
+- Use Google-style docstrings for public methods.
+- Handle specific exceptions (e.g., `TelegramError`).
+
+### Code Excerpts
+- `src/orchestrator/state.py:11-33`: Current board index and compact state logic. Use as a base for the detailed version.
+- `src/orchestrator/config.py:183-199`: `NotificationConfig` and `TelegramNotificationConfig` parsing.
+- `src/orchestrator/dispatcher.py:207-227`: Main run loop. Hook notifier and state updates after `self._record_stage_result`.
+- `src/orchestrator/models.py:110-116`: `TelegramNotificationConfig` definition.
+
+### Dependency Graph
+- `notifier.py` -> `config.py`, `models.py`, `python-telegram-bot`
+- `smoke.py` -> `config.py`, `dispatcher.py` (for provider building)
+- `dispatcher.py` -> `notifier.py`, `state.py`
+- `cli.py` -> `smoke.py`
+
+### Test Patterns
+- Use `pytest` with `unittest.mock` to mock Telegram API calls.
+- Verify JSON structure of board state matches the requirement.
+- Smoke test should be testable by mocking the provider's `invoke` method.
+
+### Gotchas
+- `python-telegram-bot` v20+ is primarily async. Since the orchestrator is currently sync, use `asyncio.run` or the library's sync-compatible wrappers if available, or simply use `httpx`/`requests` if only sending simple messages is needed. (Self-correction: `python-telegram-bot` provides `Bot.send_message` which is async; wrapping it in a helper is fine).
+
+### Scope Boundaries
+- Do not modify provider implementation details (e.g., `claude.py`).
+- Do not change the core run logic in `dispatcher.py` beyond adding the hooks.

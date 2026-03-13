@@ -1,0 +1,17 @@
+YOLO mode is enabled. All tool calls will be automatically approved.
+Loaded cached credentials.
+YOLO mode is enabled. All tool calls will be automatically approved.
+Error when talking to Gemini API Full report available at: /tmp/gemini-client-error-Turn.run-sendMessageStream-2026-03-13T21-28-19-948Z.json ModelNotFoundError: Requested entity was not found.
+    at classifyGoogleError (file:///home/cynicus/.nvm/versions/node/v24.13.0/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/utils/googleQuotaErrors.js:160:16)
+    at retryWithBackoff (file:///home/cynicus/.nvm/versions/node/v24.13.0/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/utils/retry.js:153:37)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async GeminiChat.makeApiCallAndProcessStream (file:///home/cynicus/.nvm/versions/node/v24.13.0/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/core/geminiChat.js:445:32)
+    at async GeminiChat.streamWithRetries (file:///home/cynicus/.nvm/versions/node/v24.13.0/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/core/geminiChat.js:265:40)
+    at async Turn.run (file:///home/cynicus/.nvm/versions/node/v24.13.0/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/core/turn.js:70:30)
+    at async GeminiClient.processTurn (file:///home/cynicus/.nvm/versions/node/v24.13.0/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/core/client.js:478:26)
+    at async GeminiClient.sendMessageStream (file:///home/cynicus/.nvm/versions/node/v24.13.0/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/core/client.js:579:20)
+    at async file:///home/cynicus/.nvm/versions/node/v24.13.0/lib/node_modules/@google/gemini-cli/dist/src/nonInteractiveCli.js:194:34
+    at async main (file:///home/cynicus/.nvm/versions/node/v24.13.0/lib/node_modules/@google/gemini-cli/dist/src/gemini.js:531:9) {
+  code: 404
+}
+An unexpected critical error occurred:[object Object]
