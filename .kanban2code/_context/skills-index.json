@@ -1,0 +1,530 @@
+{
+  "version": "1.0.0",
+  "last_updated": "2026-02-19",
+  "framework_detection": {
+    "nextjs": {
+      "files": ["next.config.js", "next.config.ts", "next.config.mjs"],
+      "package_json_deps": ["next"],
+      "keywords": ["next.js", "nextjs", "app router", "pages router"]
+    },
+    "react": {
+      "files": ["*.tsx", "*.jsx"],
+      "package_json_deps": ["react", "react-dom"],
+      "keywords": ["react", "component", "hooks", "useState", "useEffect"]
+    },
+    "python": {
+      "files": ["*.py", "pyproject.toml", "setup.py", "requirements.txt"],
+      "keywords": ["python", "pandas", "numpy", "greykite", "sklearn", "fastapi", "flask", "django"]
+    },
+    "greykite": {
+      "files": ["*.py", "pyproject.toml", "setup.py", "requirements.txt"],
+      "keywords": ["greykite", "silverkite", "time series forecast", "anomaly detection", "changepoint detection", "linkedin forecasting"]
+    }
+  },
+  "core_skills": [
+    {
+      "name": "Next.js 16 Core",
+      "file": "_context/skills/nextjs-core-skills.md",
+      "framework": "nextjs",
+      "always_attach": true,
+      "priority": 10,
+      "description": "Mandatory baseline for Next.js 16. Covers async APIs (params, cookies, headers), proxy.ts migration, React 19 patterns (useActionState), and parallel route requirements."
+    },
+    {
+      "name": "React + TypeScript Core",
+      "file": "_context/skills/react-core-skills.md",
+      "framework": "react",
+      "always_attach": true,
+      "priority": 9,
+      "description": "React/TypeScript naming conventions and patterns. Enforces PascalCase components, camelCase variables, {Component}Props interfaces, and hook best practices."
+    },
+    {
+      "name": "Python Core (PEP 8)",
+      "file": "_context/skills/python-core-skills.md",
+      "framework": "python",
+      "always_attach": true,
+      "priority": 9,
+      "description": "Python naming conventions and best practices. Enforces PEP 8 snake_case, type hints, docstrings, and Pythonic patterns."
+    }
+  ],
+  "conditional_skills": [
+    {
+      "name": "Caching & Data Fetching",
+      "file": "_context/skills/skill-caching-data-fetching.md",
+      "framework": "nextjs",
+      "triggers": {
+        "keywords": [
+          "cache",
+          "caching",
+          "fetch",
+          "revalidate",
+          "revalidateTag",
+          "cacheTag",
+          "cacheLife",
+          "use cache",
+          "unstable_cache",
+          "ISR",
+          "stale",
+          "PPR",
+          "partial prerendering"
+        ],
+        "files": [
+          "**/use-cache.ts",
+          "**/cache.ts",
+          "**/data.ts",
+          "**/lib/fetch*.ts"
+        ],
+        "task_patterns": [
+          "performance",
+          "slow page",
+          "data not updating",
+          "stale data",
+          "caching strategy",
+          "incremental static regeneration"
+        ]
+      },
+      "description": "Deep dive into 'use cache' directive, cacheLife profiles (seconds/minutes/hours/days/weeks/max), cacheTag for invalidation, PPR patterns, and the 'uncached by default' paradigm shift."
+    },
+    {
+      "name": "Server Actions & Mutations",
+      "file": "_context/skills/skill-server-actions-mutations.md",
+      "framework": "nextjs",
+      "triggers": {
+        "keywords": [
+          "server action",
+          "use server",
+          "useActionState",
+          "useFormState",
+          "useFormStatus",
+          "form action",
+          "FormData",
+          "mutation",
+          "submit",
+          "zod",
+          "validation",
+          ".bind"
+        ],
+        "files": [
+          "**/actions.ts",
+          "**/actions/*.ts",
+          "**/*-action.ts"
+        ],
+        "task_patterns": [
+          "form submission",
+          "create form",
+          "update data",
+          "delete record",
+          "handle form",
+          "validate input"
+        ]
+      },
+      "description": "Security patterns (Zod validation mandatory), useActionState migration from useFormState, .bind() for secure argument passing, redirect() placement outside try/catch."
+    },
+    {
+      "name": "Routing & Layouts",
+      "file": "_context/skills/skill-routing-layouts.md",
+      "framework": "nextjs",
+      "triggers": {
+        "keywords": [
+          "parallel route",
+          "@modal",
+          "@slot",
+          "default.js",
+          "default.tsx",
+          "intercepting route",
+          "(.)folder",
+          "(..)folder",
+          "layout.tsx",
+          "loading.js",
+          "error.js",
+          "route group"
+        ],
+        "files": [
+          "**/default.tsx",
+          "**/default.js",
+          "**/@*/page.tsx",
+          "**/loading.tsx",
+          "**/error.tsx"
+        ],
+        "task_patterns": [
+          "modal",
+          "sidebar",
+          "navigation",
+          "nested layout",
+          "create page",
+          "add route",
+          "parallel slot"
+        ]
+      },
+      "description": "Parallel routes (default.js requirement), intercepting routes syntax (.)/(..)/(...), async params in layouts, loading.js and error.js patterns."
+    },
+    {
+      "name": "next-intl (App Router i18n)",
+      "file": "_context/skills/skill-next-intl.md",
+      "framework": "nextjs",
+      "triggers": {
+        "keywords": [
+          "next-intl",
+          "i18n",
+          "internationalization",
+          "localization",
+          "locale",
+          "locales",
+          "translations",
+          "NextIntlClientProvider",
+          "setRequestLocale",
+          "defineRouting",
+          "createNavigation",
+          "getRequestConfig",
+          "localePrefix"
+        ],
+        "files": [
+          "**/i18n/routing.ts",
+          "**/i18n/navigation.ts",
+          "**/i18n/request.ts",
+          "**/middleware.ts",
+          "messages/*.json"
+        ],
+        "task_patterns": [
+          "i18n setup",
+          "localize routes",
+          "localized navigation",
+          "translate UI",
+          "multi-language",
+          "locale detection"
+        ]
+      },
+      "description": "Next.js 16 App Router i18n with next-intl: async params, setRequestLocale, NextIntlClientProvider, defineRouting, middleware matcher, and navigation wrappers."
+    },
+    {
+      "name": "Drizzle ORM (PostgreSQL)",
+      "file": "_context/skills/skill-drizzle-orm.md",
+      "framework": "node",
+      "triggers": {
+        "keywords": [
+          "drizzle",
+          "drizzle-orm",
+          "drizzle-kit",
+          "pgTable",
+          "jsonb",
+          "$type",
+          "db:push",
+          "db:generate",
+          "db:migrate",
+          "postgres",
+          "postgresql",
+          "migration"
+        ],
+        "files": [
+          "**/drizzle.config.ts",
+          "**/src/db/schema.ts",
+          "**/src/db/client.ts",
+          "drizzle/**/*.sql"
+        ],
+        "task_patterns": [
+          "drizzle orm",
+          "database schema",
+          "postgres migrations",
+          "jsonb handling",
+          "connection pooling"
+        ]
+      },
+      "description": "Drizzle ORM patterns for PostgreSQL: schema in TS, jsonb $type typing, pg Pool usage, indexes in pgTable callback, and dev/prod migration workflow."
+    },
+    {
+      "name": "HTTP Security Headers (Next.js)",
+      "file": "_context/skills/skill-http-security-headers.md",
+      "framework": "nextjs",
+      "triggers": {
+        "keywords": [
+          "Content-Security-Policy",
+          "CSP",
+          "security headers",
+          "headers()",
+          "next.config",
+          "X-Frame-Options",
+          "X-Content-Type-Options",
+          "Referrer-Policy",
+          "Permissions-Policy",
+          "clickjacking",
+          "XSS",
+          "nonce",
+          "strict-dynamic"
+        ],
+        "files": [
+          "**/next.config.ts",
+          "**/next.config.js",
+          "**/next.config.mjs",
+          "**/proxy.ts",
+          "**/middleware.ts"
+        ],
+        "task_patterns": [
+          "security hardening",
+          "post-incident",
+          "add CSP",
+          "configure headers",
+          "prevent clickjacking",
+          "tighten referrer policy"
+        ]
+      },
+      "description": "Next.js HTTP response header hardening: baseline headers, CSP (static vs nonce), Report-Only rollout, and next.config headers() patterns."
+    },
+    {
+      "name": "Tailwind CSS v4 (CSS-first)",
+      "file": "_context/skills/skill-tailwindcss-v4.md",
+      "framework": "react",
+      "triggers": {
+        "keywords": [
+          "tailwind v4",
+          "tailwindcss v4",
+          "tailwindcss",
+          "@theme",
+          "@source",
+          "@config",
+          "@tailwindcss/postcss",
+          "postcss.config",
+          "globals.css",
+          "tw-animate-css",
+          "tailwind.config.js",
+          "@tailwind base",
+          "@tailwind utilities"
+        ],
+        "files": [
+          "**/postcss.config.*",
+          "**/app/globals.css",
+          "**/src/app/globals.css",
+          "**/*.css"
+        ],
+        "task_patterns": [
+          "tailwind setup",
+          "tailwind migration",
+          "css-first",
+          "design tokens",
+          "theme variables",
+          "animate utilities"
+        ]
+      },
+      "description": "Tailwind CSS v4 CSS-first setup: @import \"tailwindcss\", @theme tokens, @tailwindcss/postcss, @source scan paths, legacy @config, and tw-animate-css integration."
+    },
+    {
+      "name": "Testing Stack (Vitest + Playwright)",
+      "file": "_context/skills/skill-vitest-playwright-testing.md",
+      "framework": "nextjs",
+      "triggers": {
+        "keywords": [
+          "vitest",
+          "playwright",
+          "jsdom",
+          "@vitejs/plugin-react",
+          "vitest.config",
+          "playwright.config",
+          "*.test.ts",
+          "*.test.tsx",
+          "tests/*.spec.ts",
+          "coverage",
+          "next/headers",
+          "cookies()",
+          "headers()",
+          "supabase",
+          "vi.mock"
+        ],
+        "files": [
+          "**/vitest.config.ts",
+          "**/vitest.setup.ts",
+          "**/playwright.config.ts",
+          "tests/**/*.spec.ts"
+        ],
+        "task_patterns": [
+          "testing stack",
+          "add tests",
+          "unit tests",
+          "e2e tests",
+          "coverage",
+          "mock next headers",
+          "mock supabase"
+        ]
+      },
+      "description": "Conventions for Vitest (unit/component) + Playwright (E2E): file patterns, config baselines, coverage requirements, and mocking Next.js request scope and Supabase."
+    },
+    {
+      "name": "Supabase Auth SSR (@supabase/ssr)",
+      "file": "_context/skills/skill-supabase-ssr.md",
+      "framework": "nextjs",
+      "triggers": {
+        "keywords": [
+          "@supabase/ssr",
+          "supabase ssr",
+          "supabase auth",
+          "createServerClient",
+          "createBrowserClient",
+          "proxy.ts",
+          "cookies.setAll",
+          "next/headers",
+          "getUser",
+          "getClaims",
+          "getSession",
+          "RLS",
+          "auth.uid",
+          "@supabase/auth-helpers-nextjs"
+        ],
+        "files": [
+          "proxy.ts",
+          "**/lib/supabase/client.ts",
+          "**/lib/supabase/server.ts",
+          "**/lib/supabase/proxy.ts"
+        ],
+        "task_patterns": [
+          "supabase auth",
+          "ssr auth",
+          "session leakage",
+          "cookie handling",
+          "rls policies",
+          "nextjs supabase"
+        ]
+      },
+      "description": "Security-first Supabase Auth for Next.js App Router using @supabase/ssr: browser vs server clients, cookie plumbing, proxy.ts session refresh, and RLS coordination."
+    },
+    {
+      "name": "PostHog Analytics (Next.js)",
+      "file": "_context/skills/skill-posthog-analytics.md",
+      "framework": "nextjs",
+      "triggers": {
+        "keywords": [
+          "posthog",
+          "posthog-js",
+          "posthog-node",
+          "@posthog/react",
+          "analytics",
+          "$pageview",
+          "$pageleave",
+          "autocapture",
+          "server-only",
+          "client-only",
+          "runtime",
+          "nodejs"
+        ],
+        "files": [
+          "**/app/providers.tsx",
+          "**/lib/posthog-server.ts",
+          "**/lib/analytics/client.ts",
+          "**/lib/analytics/server.ts"
+        ],
+        "task_patterns": [
+          "add analytics",
+          "posthog integration",
+          "pageview tracking",
+          "custom events",
+          "server tracking",
+          "client tracking"
+        ]
+      },
+      "description": "PostHog integration patterns for Next.js App Router: strict client/server separation, provider setup, Node server tracking with flush/shutdown, pageview strategy, and standard event properties."
+    },
+    {
+      "name": "Metadata & SEO",
+      "file": "_context/skills/skill-metadata-seo.md",
+      "framework": "nextjs",
+      "triggers": {
+        "keywords": [
+          "metadata",
+          "generateMetadata",
+          "SEO",
+          "openGraph",
+          "og:image",
+          "opengraph-image",
+          "sitemap",
+          "robots",
+          "meta tags",
+          "title",
+          "description",
+          "ImageResponse"
+        ],
+        "files": [
+          "**/opengraph-image.tsx",
+          "**/twitter-image.tsx",
+          "**/sitemap.ts",
+          "**/robots.ts",
+          "**/icon.tsx"
+        ],
+        "task_patterns": [
+          "SEO optimization",
+          "social sharing",
+          "meta tags",
+          "sitemap generation",
+          "open graph image",
+          "twitter card"
+        ]
+      },
+      "description": "Async generateMetadata signature change, ImageResponse with async params, sitemap.ts and robots.ts dynamic generation, image remotePatterns security."
+    },
+    {
+      "name": "TypeScript & Config",
+      "file": "_context/skills/skill-typescript-config.md",
+      "framework": "nextjs",
+      "triggers": {
+        "keywords": [
+          "next.config",
+          "typescript",
+          "type error",
+          "Promise type",
+          "tsconfig",
+          "server-only",
+          "experimental",
+          "cacheComponents",
+          "@types/react"
+        ],
+        "files": [
+          "**/next.config.ts",
+          "**/next.config.js",
+          "**/tsconfig.json"
+        ],
+        "task_patterns": [
+          "type error",
+          "build error",
+          "configuration",
+          "setup project",
+          "module resolution",
+          "cannot be used as JSX"
+        ]
+      },
+      "description": "next.config.ts (typed config), Promise prop type patterns, React 19 type compatibility, server-only module protection, module resolution settings."
+    },
+    {
+      "name": "Greykite (Time Series Forecasting)",
+      "file": "_context/skills/skill-greykite.md",
+      "framework": "greykite",
+      "triggers": {
+        "keywords": [
+          "greykite",
+          "silverkite",
+          "time series forecast",
+          "anomaly detection",
+          "changepoint detection",
+          "linkedin forecasting",
+          "forecast",
+          "forecasting",
+          "changepoint",
+          "trend changepoint",
+          "adaptive lasso"
+        ],
+        "files": [
+          "**/forecast*.py",
+          "**/anomaly*.py",
+          "**/changepoint*.py",
+          "**/greykite*.py"
+        ],
+        "task_patterns": [
+          "time series forecast",
+          "forecast model",
+          "anomaly detection",
+          "detect anomalies",
+          "changepoint detection",
+          "trend analysis",
+          "business metric forecast",
+          "monitoring alert"
+        ]
+      },
+      "description": "Greykite time series forecasting and anomaly detection: Forecaster.run_forecast_config, ChangepointDetector, GreykiteDetector, model templates (AUTO/SILVERKITE/PROPHET/ARIMA), evaluation metrics, and visualization patterns."
+    }
+  ]
+}
