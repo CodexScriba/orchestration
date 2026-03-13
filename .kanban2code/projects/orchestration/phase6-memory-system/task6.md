@@ -19,7 +19,7 @@ Build a three-layer memory system that retains context across orchestrator runs:
 2. **Warm layer** — Recent project context (last N completed tasks, recent decisions, recent errors)
 3. **Cold layer** — Historical patterns (aggregated stats, common failure modes, model performance)
 
-This enables Kadee to query memory for context without re-reading all task files.
+This enables Kadee to stay light by linking into orchestrator memory/state instead of re-reading all task files or carrying too much context in her own memory.
 
 ---
 
@@ -52,7 +52,7 @@ This enables Kadee to query memory for context without re-reading all task files
 - [ ] Long-term retention
 
 ### Memory API
-- [ ] Memory read API: Kadee can query memory by layer and topic
+- [ ] Memory read API: Kadee can query memory by layer and topic and use it as fast operational context
 - [ ] Memory write API: orchestrator appends to warm/cold after run completion
 - [ ] Memory is file-based and human-readable (JSON + markdown)
 
@@ -181,7 +181,7 @@ Implement the three-layer operational memory system for context retention.
 - [ ] Hot layer: current run context (active tasks, in-flight sessions, recent events) — in-memory + state file
 - [ ] Warm layer: recent project context (last N completed tasks per project, recent decisions, recent errors) — file-based
 - [ ] Cold layer: historical patterns (aggregated stats, common failure modes, model performance) — file-based
-- [ ] Memory read API: Kadee can query memory by layer and topic
+- [ ] Memory read API: Kadee can query memory by layer and topic and use it as fast operational context
 - [ ] Memory write API: orchestrator appends to warm/cold after run completion
 - [ ] Memory is file-based and human-readable (JSON + markdown)
 

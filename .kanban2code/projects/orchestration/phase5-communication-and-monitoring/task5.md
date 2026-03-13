@@ -47,10 +47,10 @@ Build the communication and monitoring layer for the orchestrator:
 - [ ] Kadee can read this file to understand board status without scanning every task
 
 ### Smoke Test Suite
-- [ ] `smoke-test` CLI subcommand calls each configured provider once
-- [ ] Sends a trivial prompt (e.g., "Say exactly: hello") and checks for a response
+- [ ] `smoke-test` CLI subcommand calls Codex, Claude, Gemini, and Qwen once each during development
+- [ ] Sends a trivial prompt (e.g., "Say exactly: hi" or "Say exactly: hello") and checks for a response
 - [ ] Reports pass/fail per provider with error details
-- [ ] Tests: Codex, Claude, Gemini, Qwen (as configured)
+- [ ] Tests: Codex, Claude, Gemini, and Qwen explicitly
 - [ ] Can be run independently before starting real task execution
 
 ---
@@ -146,7 +146,7 @@ Blocked, stalled, or escalated states trigger notifications with:
 ```
 
 ### Markdown Summary
-Human-readable summary for Kadee to quickly understand board status without scanning every task file.
+Human-readable summary for Kadee to quickly understand board status without scanning every task file; this is one of the main ways Kadee links into orchestrator memory/state.
 
 ---
 
@@ -246,10 +246,10 @@ Implement a smoke test suite to verify provider health and connectivity.
 
 #### Definition of Done
 
-- [ ] `smoke-test` CLI subcommand calls each configured provider once
-- [ ] Sends a trivial prompt (e.g., "Say exactly: hello") and checks for a response
+- [ ] `smoke-test` CLI subcommand calls Codex, Claude, Gemini, and Qwen once each during development
+- [ ] Sends a trivial prompt (e.g., "Say exactly: hi" or "Say exactly: hello") and checks for a response
 - [ ] Reports pass/fail per provider with error details
-- [ ] Tests: Codex, Claude, Gemini, Qwen (as configured)
+- [ ] Tests: Codex, Claude, Gemini, and Qwen explicitly
 - [ ] Can be run independently before starting real task execution
 
 #### Files

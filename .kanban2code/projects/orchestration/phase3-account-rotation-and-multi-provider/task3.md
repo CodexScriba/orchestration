@@ -13,7 +13,7 @@ Add account management for Codex and additional CLI providers for Claude, Gemini
 
 ## Unified Goal
 
-Implement a complete multi-provider system with account rotation and intelligent model routing:
+Implement the multi-provider/account layer with explicit stage routing and fallback chains:
 
 1. **Account manager** — Rotate Codex auth tokens per task, with health checks and fallback
 2. **Claude CLI provider** — Support for Anthropic models (Opus, Sonnet, Haiku)
@@ -59,9 +59,9 @@ Implement a complete multi-provider system with account rotation and intelligent
 
 ### Model Routing
 - [ ] Config defines provider preference per stage with ordered fallback list
-- [ ] Planning: Gemini Flash 3.x → Qwen Kimi 2.5 → Haiku
-- [ ] Coding: Codex 5.4 medium → Sonnet 4.6 → GLM via Qwen
-- [ ] Auditing: Opus → Codex 5.4 high reasoning
+- [ ] Planning: Gemini Flash 3.0/3.1 primary (not 2.5) → Qwen Kimi 2.5 → Haiku / MiniMax / other Qwen fallback
+- [ ] Coding: Codex 5.4 medium → Sonnet 4.6 → GLM via Qwen CLI
+- [ ] Auditing: Opus 4.6 thinking → Codex 5.4 xhigh
 - [ ] On provider failure, automatically try next in fallback chain
 - [ ] Log which provider/model was actually used
 
@@ -135,9 +135,9 @@ Implement a complete multi-provider system with account rotation and intelligent
 
 | Stage | Primary | Fallback 1 | Fallback 2 |
 |-------|---------|------------|------------|
-| Planning | Gemini Flash 3.x | Qwen Kimi 2.5 | Haiku |
-| Coding | Codex 5.4 medium | Sonnet 4.6 | GLM via Qwen |
-| Auditing | Opus | Codex 5.4 high reasoning | — |
+| Planning | Gemini Flash 3.0 / 3.1 | Qwen Kimi 2.5 | Haiku / MiniMax / other Qwen fallback |
+| Coding | Codex 5.4 medium | Sonnet 4.6 | GLM via Qwen CLI |
+| Auditing | Opus 4.6 thinking | Codex 5.4 xhigh | — |
 
 ### Account Rotation Pattern
 
@@ -268,9 +268,9 @@ Implement model routing and ordered fallback chains in the dispatcher.
 #### Definition of Done
 
 - [ ] Config defines provider preference per stage with ordered fallback list
-- [ ] Planning: Gemini Flash 3.x → Qwen Kimi 2.5 → Haiku
-- [ ] Coding: Codex 5.4 medium → Sonnet 4.6 → GLM via Qwen
-- [ ] Auditing: Opus → Codex 5.4 high reasoning
+- [ ] Planning: Gemini Flash 3.0/3.1 primary (not 2.5) → Qwen Kimi 2.5 → Haiku / MiniMax / other Qwen fallback
+- [ ] Coding: Codex 5.4 medium → Sonnet 4.6 → GLM via Qwen CLI
+- [ ] Auditing: Opus 4.6 thinking → Codex 5.4 xhigh
 - [ ] On provider failure, automatically try next in fallback chain
 - [ ] Log which provider/model was actually used
 

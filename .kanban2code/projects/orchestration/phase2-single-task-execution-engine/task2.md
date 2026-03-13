@@ -15,7 +15,7 @@ Build the core execution loop: provider abstraction, prompt assembly, tmux sessi
 
 Implement a complete single-task execution engine that can take a Kanban2Code task from plan through code to audit and completion. This includes:
 
-1. **Provider abstraction** — A pluggable interface for different AI CLI providers (Codex, Claude, Gemini, Qwen)
+1. **Provider abstraction** — A pluggable interface with a working Codex implementation first; other providers arrive in later phases
 2. **Prompt assembly** — Injecting actual file contents into prompts, never placeholders
 3. **tmux session management** — Running providers in visible, monitorable sessions with timeout enforcement
 4. **Stage dispatch and evaluation** — Running stages and detecting success/failure from frontmatter transitions
