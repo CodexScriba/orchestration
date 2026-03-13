@@ -9,6 +9,7 @@ from orchestrator.state import (
     load_run_state,
     render_run_summary,
     save_run_state,
+    write_handoff_readme,
 )
 
 
@@ -151,3 +152,37 @@ def test_render_run_summary_includes_queue_and_recent_events() -> None:
     assert "audit_failures: 1" in summary
     assert "## Recent Events" in summary
     assert "stage_success | Task moved to audit." in summary
+
+
+def test_write_handoff_readme_includes_context_and_reason(tmp_path: Path) -> None:
+    handoff_path = tmp_path / "HANDOFF.md"
+    run_state = RunState(
+        run_id="run-123",
+        recent_events=[
+            RunEvent(
+                timestamp="2026-03-13T00:05:00Z",
+                type="handoff",
+                message="Manual follow-up required.",
+            )
+        ],
+    )
+    snapshot = TaskSnapshot(
+        path=tmp_path / "task.md",
+        task_id="task1",
+        project="orchestration",
+        stage="audit",
+        agent="auditor",
+        contexts=["skills/python-core-skills"],
+    )
+
+    write_handoff_readme(
+        path=handoff_path,
+        run_state=run_state,
+        task_snapshot=snapshot,
+        reason="Transport retries exhausted.",
+    )
+
+    contents = handoff_path.read_text(encoding="utf-8")
+    assert "Transport retries exhausted." in contents
+    assert "skills/python-core-skills" in contents
+    assert "Manual follow-up required." in contents

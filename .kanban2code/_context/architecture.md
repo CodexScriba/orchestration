@@ -332,3 +332,30 @@ See: [docs/architecture.md](docs/architecture.md) for the full architecture docu
     - `src/orchestrator/logger.py` - Structured JSONL logger (JsonlLogger) for orchestrator events
     - `tests/test_logger.py` - JSONL logger append and multi-event tests
     - `tests/test_state.py` - Run state round-trip, event capping, summary rendering tests
+
+- date: 2026-03-13
+  - task: `task2-single-task-execution-engine`
+  - files-updated:
+    - `src/orchestrator/__init__.py` (added Dispatcher export)
+    - `src/orchestrator/cli.py` (wired run, continue, status commands to Dispatcher)
+    - `src/orchestrator/models.py` (added ProviderConfig, ProviderAliasConfig, InvocationResult, SessionResult, StageResult, StageTimeoutConfig, RetryPolicyConfig dataclasses)
+    - `src/orchestrator/state.py` (added write_handoff_readme, render_run_summary enhancements)
+    - `tests/test_cli.py` (added run/continue/status/smoke-test dispatch tests)
+    - `tests/test_models.py` (added tests for new model defaults and mutable isolation)
+    - `tests/test_state.py` (added handoff readme and run summary tests)
+  - new-files-created:
+    - `src/orchestrator/providers/__init__.py` - Provider package init with BaseProvider, CodexProvider exports
+    - `src/orchestrator/providers/base.py` - Abstract BaseProvider interface with invoke() method
+    - `src/orchestrator/providers/codex.py` - Codex CLI provider: config loading from frontmatter, command building, session execution
+    - `src/orchestrator/prompts.py` - Prompt assembly from role, ai-guide, task, and context files with run metadata
+    - `src/orchestrator/sessions.py` - Process-based session manager with wall/idle timeout enforcement
+    - `src/orchestrator/dispatcher.py` - Stage dispatch, run loop with bounce tracking, transport retries, handoff
+    - `src/orchestrator/evaluator.py` - Snapshot-based stage transition evaluation (plan/code/audit outcomes)
+    - `src/orchestrator/commits.py` - Surgical git commits after audit acceptance (file-specific staging)
+    - `tests/conftest.py` - Test configuration with sys.path setup
+    - `tests/test_providers.py` - Provider config loading, command building, missing binary, session mapping tests
+    - `tests/test_prompts.py` - Prompt assembly verbatim inclusion and missing context error tests
+    - `tests/test_sessions.py` - Session naming, process exit, wall/idle timeout, cleanup tests
+    - `tests/test_dispatcher.py` - Run loop completion, bounce handoff, transport retry, resume tests
+    - `tests/test_evaluator.py` - Plan/code/audit success, blocked, quality failure, transport failure tests
+    - `tests/test_commits.py` - Surgical commit, empty file skip, branch creation, no git-add-dot tests

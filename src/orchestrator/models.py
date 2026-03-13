@@ -16,6 +16,21 @@ class ProviderAliasConfig:
 
 
 @dataclass(slots=True)
+class ProviderConfig:
+    """Runtime provider configuration loaded from markdown frontmatter."""
+
+    alias: str = ""
+    cli: str = ""
+    subcommand: str = ""
+    model: str | None = None
+    provider: str | None = None
+    prompt_style: str = "stdin"
+    unattended_flags: list[str] = field(default_factory=list)
+    output_flags: list[str] = field(default_factory=list)
+    config_overrides: dict[str, object] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
 class PlanStageRoutingConfig:
     """Routing rules for the plan stage."""
 
@@ -54,6 +69,36 @@ class StageTimeoutConfig:
 
     wall_seconds: int = 0
     idle_seconds: int = 0
+
+
+@dataclass(slots=True)
+class InvocationResult:
+    """Outcome of a provider CLI invocation."""
+
+    ok: bool = False
+    exit_code: int | None = None
+    timeout_type: str | None = None
+    final_message: str | None = None
+    output_paths: dict[str, str] = field(default_factory=dict)
+    error_message: str | None = None
+    command: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class SessionResult:
+    """Result of a tmux-backed session execution."""
+
+    ok: bool = False
+    session_name: str = ""
+    exit_code: int | None = None
+    timeout_type: str | None = None
+    output_path: str = ""
+    prompt_path: str = ""
+    exit_code_path: str = ""
+    task_mutated: bool = False
+    final_message: str | None = None
+    command: list[str] = field(default_factory=list)
+    error_message: str | None = None
 
 
 @dataclass(slots=True)
@@ -147,6 +192,29 @@ class RunEvent:
     type: str = ""
     message: str = ""
     extras: dict[str, object] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class StageResult:
+    """Semantic outcome of a stage execution."""
+
+    kind: str = "transport_failure"
+    stage: str = ""
+    success: bool = False
+    task_path: str = ""
+    task_id: str = ""
+    provider_key: str = ""
+    provider_alias: str = ""
+    provider_model: str | None = None
+    exit_code: int | None = None
+    output_paths: dict[str, str] = field(default_factory=dict)
+    error_message: str | None = None
+    timeout_type: str | None = None
+    final_message: str | None = None
+    before_stage: str = ""
+    after_stage: str = ""
+    after_agent: str = ""
+    audit_rating: int | None = None
 
 
 @dataclass(slots=True)

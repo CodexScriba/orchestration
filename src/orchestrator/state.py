@@ -151,6 +151,45 @@ def render_run_summary(run_state: RunState) -> str:
     return "\n".join(lines) + "\n"
 
 
+def write_handoff_readme(
+    *,
+    path: Path,
+    run_state: RunState,
+    task_snapshot: TaskSnapshot,
+    reason: str,
+) -> None:
+    """Write a human-readable handoff summary for manual follow-up."""
+
+    lines = [
+        "# Handoff Required",
+        "",
+        f"- Run ID: {run_state.run_id}",
+        f"- Task: {task_snapshot.task_id}",
+        f"- Task Path: {task_snapshot.path}",
+        f"- Current Stage: {task_snapshot.stage}",
+        f"- Agent: {task_snapshot.agent}",
+        f"- Reason: {reason}",
+        "",
+        "## Task Contexts",
+    ]
+
+    if not task_snapshot.contexts:
+        lines.append("- none")
+    else:
+        for context_name in task_snapshot.contexts:
+            lines.append(f"- {context_name}")
+
+    lines.extend(["", "## Recent Events"])
+    if not run_state.recent_events:
+        lines.append("- none")
+    else:
+        for event in run_state.recent_events:
+            lines.append(f"- {event.timestamp} | {event.type} | {event.message}")
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def _optional_str(value: object) -> str | None:
     """Convert optional JSON scalar values into strings or None."""
 
