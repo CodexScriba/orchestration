@@ -313,3 +313,22 @@ See: [docs/architecture.md](docs/architecture.md) for the full architecture docu
     - `tests/test_config.py` - Config loading and validation tests
     - `tests/test_cli.py` - CLI subcommand registration tests
     - `tests/test_models.py` - Dataclass default and mutable-isolation tests
+
+- date: 2026-03-13
+  - task: `task1.2-task-scanner-and-frontmatter-parser`
+  - files-updated:
+    - `src/orchestrator/models.py` (added TaskSnapshot dataclass with __post_init__ normalization)
+  - new-files-created:
+    - `src/orchestrator/scanner.py` - Task file discovery, YAML frontmatter parsing, project/stage indexing
+    - `src/orchestrator/state.py` - Board state view builder (build_board_index, build_board_state)
+    - `tests/test_scanner.py` - Scanner discovery, frontmatter parsing, board state tests
+
+- date: 2026-03-13
+  - task: `task1.3-structured-logging-and-run-state-persistence`
+  - files-updated:
+    - `src/orchestrator/models.py` (added RunEvent, TaskRunState, RunState dataclasses)
+    - `src/orchestrator/state.py` (added save_run_state, load_run_state, append_recent_event, render_run_summary)
+  - new-files-created:
+    - `src/orchestrator/logger.py` - Structured JSONL logger (JsonlLogger) for orchestrator events
+    - `tests/test_logger.py` - JSONL logger append and multi-event tests
+    - `tests/test_state.py` - Run state round-trip, event capping, summary rendering tests
