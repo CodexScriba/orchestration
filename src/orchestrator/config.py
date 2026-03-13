@@ -17,6 +17,7 @@ from orchestrator.models import (
     PlanStageRoutingConfig,
     ProviderAliasConfig,
     RetryPolicyConfig,
+    SchedulerConfig,
     StageTimeoutConfig,
     TelegramNotificationConfig,
 )
@@ -77,6 +78,7 @@ def load_config(path: str | Path = "config.json") -> OrchestratorConfig:
             "notifications",
         ),
         logging=_parse_logging(_require_mapping(raw_config, "logging"), "logging"),
+        scheduler=_parse_scheduler(raw_config.get("scheduler"), "scheduler"),
     )
 
 
@@ -241,6 +243,18 @@ def _parse_logging(raw_logging: Mapping[str, object], path: str) -> LoggingConfi
     return LoggingConfig(
         date_folder_format=_require_str(raw_logging, "date_folder_format", path),
         retain_recent_events=_require_int(raw_logging, "retain_recent_events", path),
+    )
+
+
+def _parse_scheduler(raw_scheduler: object | None, path: str) -> SchedulerConfig:
+    """Parse scheduler config with defaults if not present."""
+    if raw_scheduler is None:
+        return SchedulerConfig()
+    if not isinstance(raw_scheduler, Mapping):
+        raise ConfigError(f"Invalid config type for {path}: expected object")
+    return SchedulerConfig(
+        max_concurrent=_require_int(raw_scheduler, "max_concurrent", path),
+        enabled=_require_bool(raw_scheduler, "enabled", path),
     )
 
 

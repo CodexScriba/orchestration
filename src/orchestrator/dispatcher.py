@@ -5,12 +5,13 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 
+import logging
+
+from orchestrator.accounts import AccountManager
 from orchestrator.commits import commit_after_audit
 from orchestrator.config import OrchestratorConfig, load_config
 from orchestrator.evaluator import evaluate_stage_result
 from orchestrator.logger import JsonlLogger
-import logging
-
 from orchestrator.models import FallbackChainEntry, ProviderAliasConfig, RunState, StageResult, TaskRunState
 from orchestrator.prompts import assemble_prompt
 from orchestrator.providers.base import BaseProvider, ProviderError
@@ -19,9 +20,9 @@ from orchestrator.providers.codex import CodexProvider
 from orchestrator.providers.gemini import GeminiProvider
 from orchestrator.providers.qwen import QwenProvider
 from orchestrator.scanner import discover_task_files, parse_task_file
+from orchestrator.state import append_recent_event, save_run_state, write_handoff_readme
 
 _logger = logging.getLogger(__name__)
-from orchestrator.state import append_recent_event, save_run_state, write_handoff_readme
 
 STAGE_PROVIDER_KEYS = {
     "plan": "planner",
@@ -40,11 +41,16 @@ class Dispatcher:
         config: OrchestratorConfig | None = None,
         logger: JsonlLogger | None = None,
         run_state_path: Path | None = None,
+        account_manager: AccountManager | None = None,
     ) -> None:
         self.repo_root = Path(repo_root)
         self.config = config or load_config(self.repo_root / "config.json")
         self.run_state_path = run_state_path or self.repo_root / ".kanban2code" / "runs" / "latest.json"
         self.logger = logger or JsonlLogger(self.repo_root / ".kanban2code" / "runs" / "events.jsonl")
+        pool = self.config.accounts.codex_pool
+        self.account_manager = account_manager or (
+            AccountManager(pool=pool) if pool else None
+        )
 
     def dispatch_stage(self, *, task_path: Path, run_id: str) -> StageResult:
         """Run one stage for a task using fallback chain, evaluate the outcome."""
@@ -76,6 +82,30 @@ class Dispatcher:
             except (ValueError, ProviderError) as exc:
                 _logger.warning("Skipping provider %r: %s", entry.alias, exc)
                 continue
+
+            if isinstance(provider, CodexProvider) and self.account_manager:
+                try:
+                    account = self.account_manager.get_account_for_task(before.task_id)
+                    _logger.info(
+                        "Codex account %r active for task %r stage %r",
+                        account, before.task_id, stage,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    _logger.error("Account rotation failed for task %r: %s", before.task_id, exc)
+                    from orchestrator.models import InvocationResult  # noqa: PLC0415
+                    return evaluate_stage_result(
+                        config=self.config,
+                        stage=stage,
+                        before=before,
+                        after=before,
+                        invocation=InvocationResult(
+                            ok=False,
+                            error_message=f"Account rotation failed: {exc}",
+                        ),
+                        provider_key=provider_key,
+                        provider_alias=entry.alias,
+                        provider_model=None,
+                    )
 
             session_name = provider.session_manager.create_session_name(
                 run_id, before.task_id, stage
@@ -217,6 +247,10 @@ class Dispatcher:
             if task_state.status != "completed" and task_state.status != "blocked":
                 task_state.status = "completed"
 
+            if self.account_manager:
+                snapshot = parse_task_file(task_path)
+                self.account_manager.release_task(snapshot.task_id)
+
         active_run_state.status = "completed"
         active_run_state.current_task = None
         active_run_state.current_stage = None
@@ -269,6 +303,12 @@ class Dispatcher:
                     alias=alias,
                     alias_config=alias_config,
                 )
+            if provider_type in ("openai", "codex") or cli == "codex":
+                return CodexProvider(
+                    repo_root=self.repo_root,
+                    alias=alias,
+                    alias_config=alias_config,
+                )
 
         # Fall back to alias prefix matching for backward compatibility
         if alias.startswith("codex"):
@@ -308,6 +348,8 @@ class Dispatcher:
             task=task_key,
             result=result.kind,
             after_stage=result.after_stage,
+            provider_alias=result.provider_alias,
+            provider_model=result.provider_model,
         )
         append_recent_event(run_state, event, self.config.logging.retain_recent_events)
 

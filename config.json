@@ -104,5 +104,9 @@
   "logging": {
     "date_folder_format": "%Y-%m-%d",
     "retain_recent_events": 20
+  },
+  "scheduler": {
+    "max_concurrent": 4,
+    "enabled": true
   }
 }

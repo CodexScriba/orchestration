@@ -492,3 +492,51 @@ From `tests/test_dispatcher.py`:
 ### Scope Boundaries
 
 This task is standalone in phase3. No sibling tasks exist. All subtasks (3.1-3.4) are part of this single task file.
+
+---
+
+## Review
+
+**Rating: 7/10**
+
+**Verdict: NEEDS WORK**
+
+### Summary
+The previous routing and logging gaps are fixed, and the targeted provider/routing test suite now passes. One important behavior is still wrong, though: when account rotation exhausts the Codex pool, the dispatcher logs a warning and continues anyway instead of escalating the task.
+
+### Findings
+
+#### Blockers
+- [x] Account-rotation failure is swallowed instead of escalating: `AccountManager.get_account_for_task()` already performs round-robin fallback and raises when the entire pool is unhealthy, but `dispatch_stage()` catches that exception and still invokes Codex with whatever auth state was already on disk. That violates the task rule "if all fail, escalate" and can run a task against the wrong account. - `src/orchestrator/dispatcher.py:86`
+
+#### High Priority
+- [ ] None.
+
+#### Medium Priority
+- [x] The new tests cover the happy path for `AccountManager` invocation, but there is still no dispatcher-level test that verifies an exhausted account pool produces a stage failure or handoff. That leaves the remaining blocker unguarded. - `tests/test_routing.py:311`
+
+#### Low Priority / Nits
+- [ ] None.
+
+### Test Assessment
+- Coverage: Needs improvement
+- Missing tests: Dispatcher test for "all accounts failed" causing transport failure/handoff instead of continuing with Codex; integration test showing the same assigned Codex account survives an audit bounce end-to-end
+
+### What's Good
+- [ ] The prior issues around frontmatter-based OpenAI provider resolution and persisted provider alias/model logging are fixed, and the targeted suites for accounts/providers/routing now pass.
+
+### Recommendations
+- [ ] Treat `AccountError` from `get_account_for_task()` as a real stage failure so the normal retry/handoff path can escalate when every Codex account is unhealthy, then add a regression test for that branch.
+
+---
+
+## Audit
+
+src/orchestrator/accounts.py
+src/orchestrator/dispatcher.py
+src/orchestrator/providers/claude.py
+src/orchestrator/providers/gemini.py
+src/orchestrator/providers/qwen.py
+src/orchestrator/providers/__init__.py
+tests/test_routing.py
+config.json

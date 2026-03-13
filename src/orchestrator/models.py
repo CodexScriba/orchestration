@@ -141,6 +141,24 @@ class LoggingConfig:
 
 
 @dataclass(slots=True)
+class SchedulerConfig:
+    """Concurrency and scheduling settings."""
+
+    max_concurrent: int = 4
+    enabled: bool = True
+
+
+@dataclass(slots=True)
+class TaskFileInfo:
+    """File set information for a task, used in conflict detection."""
+
+    task_path: Path = field(default_factory=lambda: Path("."))
+    task_id: str = ""
+    file_paths: set[Path] = field(default_factory=set)
+    has_blocking_tag: bool = False
+
+
+@dataclass(slots=True)
 class FallbackChainEntry:
     """A single provider entry in a fallback chain."""
 
@@ -165,6 +183,7 @@ class OrchestratorConfig:
     accounts: AccountsConfig = field(default_factory=AccountsConfig)
     notifications: NotificationConfig = field(default_factory=NotificationConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
+    scheduler: SchedulerConfig = field(default_factory=SchedulerConfig)
 
 
 @dataclass(slots=True)
