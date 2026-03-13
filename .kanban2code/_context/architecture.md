@@ -299,3 +299,17 @@ See: [docs/architecture.md](docs/architecture.md) for the full architecture docu
     - `.kanban2code/_providers/codex-low.md` - Codex provider preset with `model_reasoning_effort: low`
     - `.kanban2code/_providers/codex-high.md` - Codex provider preset with `model_reasoning_effort: high`
     - `.kanban2code/_providers/codex-xhigh.md` - Codex provider preset with `model_reasoning_effort: xhigh`
+
+- date: 2026-03-13
+  - task: `task1.1-project-scaffold-and-config-system`
+  - files-updated: none
+  - new-files-created:
+    - `pyproject.toml` - Project metadata, dependencies, and tool config (setuptools, pytest, ruff)
+    - `config.json` - Default orchestrator configuration (providers, stage routing, timeouts, retry, accounts, notifications, logging)
+    - `src/orchestrator/__init__.py` - Package init with public exports
+    - `src/orchestrator/models.py` - Typed dataclasses for all config sections (OrchestratorConfig, ProviderAliasConfig, StageRoutingConfigs, etc.)
+    - `src/orchestrator/config.py` - JSON config loader with fail-fast validation and dotted-path error messages
+    - `src/orchestrator/cli.py` - Argparse CLI with run, continue, status, smoke-test subcommand stubs
+    - `tests/test_config.py` - Config loading and validation tests
+    - `tests/test_cli.py` - CLI subcommand registration tests
+    - `tests/test_models.py` - Dataclass default and mutable-isolation tests

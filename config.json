@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "providers": {
+    "planner": {
+      "alias": "codex-low",
+      "model": null,
+      "config_overrides": {}
+    },
+    "coder": {
+      "alias": "codex",
+      "model": null,
+      "config_overrides": {}
+    },
+    "auditor": {
+      "alias": "codex-high",
+      "model": null,
+      "config_overrides": {}
+    },
+    "auditor_escalation": {
+      "alias": "codex-xhigh",
+      "model": null,
+      "config_overrides": {}
+    }
+  },
+  "stage_routing": {
+    "plan": {
+      "agent": "planner",
+      "success_stage": "code",
+      "success_agent": "coder",
+      "required_sections": [
+        "## Refined Prompt",
+        "## Context"
+      ]
+    },
+    "code": {
+      "agent": "coder",
+      "success_stage": "audit",
+      "success_agent": "auditor",
+      "required_sections": [
+        "## Audit"
+      ]
+    },
+    "audit": {
+      "agent": "auditor",
+      "accepted_stage": "completed",
+      "accepted_agent": "auditor",
+      "rework_stage": "code",
+      "rework_agent": "coder",
+      "required_sections": [
+        "## Review"
+      ],
+      "accepted_rating": 8
+    }
+  },
+  "timeouts": {
+    "plan": {
+      "wall_seconds": 600,
+      "idle_seconds": 120
+    },
+    "code": {
+      "wall_seconds": 1800,
+      "idle_seconds": 300
+    },
+    "audit": {
+      "wall_seconds": 1200,
+      "idle_seconds": 180
+    }
+  },
+  "retry_policy": {
+    "transport_max_attempts": 3,
+    "audit_failure_cycles_before_handoff": 2
+  },
+  "accounts": {
+    "codex_pool": [
+      "personal",
+      "work",
+      "home"
+    ]
+  },
+  "notifications": {
+    "telegram": {
+      "enabled": false,
+      "bot_token_env_var": "ORCHESTRATOR_TELEGRAM_BOT_TOKEN",
+      "chat_id_env_var": "ORCHESTRATOR_TELEGRAM_CHAT_ID"
+    }
+  },
+  "logging": {
+    "date_folder_format": "%Y-%m-%d",
+    "retain_recent_events": 20
+  }
+}
