@@ -941,3 +941,74 @@ class TestMemoryLifecycle:
         assert any(len(sessions) > 0 for sessions in observed_in_flight), (
             f"No in-flight sessions observed during run: {observed_in_flight}"
         )
+
+
+class TestSequentialMemoryLifecycle:
+    """Tests for memory integration with sequential Dispatcher."""
+
+    def test_sequential_dispatcher_tracks_in_flight_sessions(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """Sequential Dispatcher tracks in-flight sessions via add/remove on each provider invoke."""
+        from unittest.mock import MagicMock
+
+        from orchestrator.dispatcher import Dispatcher
+        from orchestrator.models import InvocationResult, RunState, TaskRunState
+
+        repo_root = tmp_path
+        config_path = repo_root / "config.json"
+        config_path.write_text(Path("config.json").read_text(encoding="utf-8"), encoding="utf-8")
+
+        task_path = repo_root / ".kanban2code" / "projects" / "orch" / "task.md"
+        _write_task(task_path, stage="code", agent="coder")
+
+        state_path = repo_root / ".kanban2code" / "runs" / "latest.json"
+        dispatcher = Dispatcher(
+            repo_root=repo_root,
+            config=load_config(config_path),
+            run_state_path=state_path,
+        )
+
+        # Initialize hot memory so add/remove have somewhere to write
+        run_state = RunState(
+            run_id="test-run",
+            created_at="2026-03-13T00:00:00Z",
+            status="running",
+            ordered_tasks=[str(task_path)],
+            task_states={str(task_path): TaskRunState()},
+        )
+        dispatcher.memory.init_hot_memory(run_state)
+
+        # Track calls to in-flight session management
+        added: list[dict] = []
+        removed: list[str] = []
+        _orig_add = dispatcher.memory.add_in_flight_session
+        _orig_remove = dispatcher.memory.remove_in_flight_session
+
+        def track_add(session_info: dict) -> None:
+            added.append(session_info)
+            _orig_add(session_info)
+
+        def track_remove(task_key: str) -> None:
+            removed.append(task_key)
+            _orig_remove(task_key)
+
+        monkeypatch.setattr(dispatcher.memory, "add_in_flight_session", track_add)
+        monkeypatch.setattr(dispatcher.memory, "remove_in_flight_session", track_remove)
+
+        # Mock provider so we don't need real CLI tools
+        mock_provider = MagicMock()
+        mock_provider.session_manager.create_session_name.return_value = "test-session"
+        mock_provider.invoke.return_value = InvocationResult(ok=False, error_message="mock")
+        mock_provider.provider_config.model = "test-model"
+        monkeypatch.setattr(dispatcher, "_build_provider", lambda alias, cfg: mock_provider)
+        monkeypatch.setattr(
+            "orchestrator.dispatcher.assemble_prompt", lambda **kw: "test-prompt"
+        )
+
+        dispatcher.dispatch_stage(task_path=task_path, run_id="test-run")
+
+        assert len(added) >= 1, "add_in_flight_session was never called by sequential dispatcher"
+        assert len(removed) >= 1, "remove_in_flight_session was never called by sequential dispatcher"
+        assert added[0]["task_key"] == str(task_path)
+        assert removed[0] == str(task_path)

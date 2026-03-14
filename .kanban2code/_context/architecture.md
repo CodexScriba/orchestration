@@ -16,6 +16,20 @@ See: [docs/architecture.md](docs/architecture.md) for the full architecture docu
 ## Accepted Task Updates
 
 - date: 2026-03-13
+  - task: `task6-memory-system`
+  - files-updated:
+    - `config.json` (added memory retention and cold-aggregation settings)
+    - `src/orchestrator/config.py` (parses typed memory configuration)
+    - `src/orchestrator/models.py` (added `MemoryConfig` and extended `TaskExecutionResult` with staged run events)
+    - `src/orchestrator/dispatcher.py` (initializes hot memory, updates it during sequential runs, archives to warm/cold on completion, and now tracks in-flight sessions during direct provider invocation)
+    - `src/orchestrator/scheduler.py` (initializes hot memory for concurrent runs, tracks in-flight sessions, merges worker `stage_result` events back into `run_state.recent_events`, and archives to warm/cold on completion)
+  - new-files-created:
+    - `src/orchestrator/memory.py` - three-layer operational memory manager for hot, warm, and cold context retention across runs
+    - `tests/test_memory.py` - focused coverage for memory persistence, retention, error archival, aggregation, and hot-layer session tracking helpers
+  - tests-added:
+    - `tests/test_scheduler.py` now covers concurrent and sequential memory lifecycle integration, including `stage_result` propagation into run state, cold model-performance aggregation, and hot-memory in-flight session visibility
+
+- date: 2026-03-13
   - task: `task5-communication-and-monitoring`
   - files-updated:
     - `src/orchestrator/state.py` (adds detailed board-state JSON with canonical stage buckets plus markdown board summaries for Kadee)

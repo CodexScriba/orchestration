@@ -1,9 +1,9 @@
 ---
-stage: code
+stage: completed
 tags:
   - feature
   - p6
-agent: coder
+agent: auditor
 contexts: []
 skills:
   - python-core-skills
@@ -435,22 +435,23 @@ Phases 1-5 are complete — all infrastructure (config, state, dispatcher, sched
 
 Fixed all review findings (previously rated 7/10):
 
-1. **Concurrent runs skip stage_result memory data (blocker)** — Added `stage_events: list[RunEvent]` to `TaskExecutionResult`. `_run_task_stages` now logs each `stage_result` event via `self.logger.append` and appends it to a local list, which is merged into `run_state.recent_events` in `_handle_task_result` on the main thread. Warm error archival and cold model_performance aggregation both now work in the default concurrent path.
-2. **in_flight_sessions not persisted in real time (high)** — Refactored `_persist_hot_memory` to use `self._hot.run_id` (removing the `run_id` parameter). `add_in_flight_session` and `remove_in_flight_session` now call `_persist_hot_memory()` after each mutation, keeping `hot.json` current as sessions start and finish.
-3. **Coverage missing scheduler lifecycle (medium)** — Added `TestMemoryLifecycle` class to `test_scheduler.py` with three end-to-end tests through `ConcurrentScheduler`: stage_result events in `run_state.recent_events`, cold model_performance populated after a run, and in-flight sessions visible in `hot.json` during dispatch. Added `test_in_flight_session_persisted_to_hot_json` to `test_memory.py`.
+1. **Concurrent runs skip stage_result memory data (blocker, prev round)** — `stage_events` pipeline through `TaskExecutionResult` — already landed.
+2. **in_flight_sessions not persisted in real time (high, prev round)** — `_persist_hot_memory` refactor + add/remove call through — already landed.
+3. **Sequential dispatcher never tracks in-flight sessions (high)** — `dispatch_stage()` now wraps each `provider.invoke()` call with `self.memory.add_in_flight_session(...)` before and `self.memory.remove_in_flight_session(...)` in a `finally` block. Both sequential and concurrent paths now track sessions identically.
+4. **No dispatcher-level test for sequential execution (medium)** — Added `TestSequentialMemoryLifecycle.test_sequential_dispatcher_tracks_in_flight_sessions` which monkeypatches `_build_provider` and tracks calls to `add_in_flight_session` / `remove_in_flight_session` through a real `Dispatcher.dispatch_stage()` call.
 
-All 131 tests pass including 21 memory tests and 3 new scheduler memory-lifecycle tests.
+All 132 tests pass including 21 memory tests, 3 concurrent scheduler lifecycle tests, and 1 sequential dispatcher memory lifecycle test.
 
 ---
 
 ## Review
 
-**Rating: 7/10**
+**Rating: 9/10**
 
-**Verdict: NEEDS WORK**
+**Verdict: ACCEPTED**
 
 ### Summary
-The previous concurrent-path blocker is fixed: worker stage results now flow into `run_state.recent_events`, cold model-performance is populated from concurrent runs, and hot-memory session writes are persisted immediately. The remaining gap is narrower but still important: sequential runs still never register in-flight sessions with memory, so the hot layer does not meet the task definition across both supported execution modes.
+The remaining sequential-mode gap is fixed: both sequential and concurrent execution paths now report in-flight sessions into hot memory, and the scheduler lifecycle coverage added in this task now extends to the dispatcher path as well. The memory system meets the task definition across hot, warm, and cold layers.
 
 ### Findings
 
@@ -458,20 +459,20 @@ The previous concurrent-path blocker is fixed: worker stage results now flow int
 - None.
 
 #### High Priority
-- [ ] [Sequential mode still omits in-flight session tracking]: `ConcurrentScheduler` now calls `add_in_flight_session()` and `remove_in_flight_session()`, but the sequential `Dispatcher` path still creates and runs tmux-backed sessions without ever reporting them to `MemoryManager`. If users disable the scheduler or run with `--sequential`, `hot.json` will still show no in-flight sessions. - `src/orchestrator/dispatcher.py:121`, `src/orchestrator/scheduler.py:568`
+- None.
 
 #### Medium Priority
-- [ ] [Coverage still misses the sequential lifecycle]: The new end-to-end tests do a good job on the concurrent path, but there is still no dispatcher-level memory test for sequential execution, which is the only place the remaining gap can hide. - `tests/test_scheduler.py:803`
+- None.
 
 #### Low Priority / Nits
 - None.
 
 ### Test Assessment
-- Coverage: Needs improvement
-- Missing tests: Sequential dispatcher populates `in_flight_sessions`; sequential hot-memory file reflects session start/finish during a real run
+- Coverage: Adequate
+- Missing tests: No significant coverage gaps identified for this task's scope; residual risk is limited to real CLI/tmux integration outside the mocked test harness.
 
 ### What's Good
-- [x] The concurrent-path fixes are real: stage results now reach `run_state.recent_events`, cold model-performance is populated end-to-end, and `hot.json` updates immediately when concurrent sessions are added or removed.
+- [x] The implementation now handles stage-result propagation, warm error archival, cold model-performance aggregation, and in-flight session persistence consistently across both dispatcher and scheduler execution modes.
 
 ### Recommendations
-- [ ] Reuse the same session-tracking hook from both execution modes by wrapping `Dispatcher.dispatch_stage()` with `MemoryManager.add_in_flight_session()` / `remove_in_flight_session()`, then add one sequential integration test to keep the two paths aligned.
+- [ ] Optional follow-up: add one smoke-style integration check against a real provider session path if the team wants extra confidence beyond the current mocked lifecycle tests.

@@ -121,12 +121,23 @@ class Dispatcher:
             session_name = provider.session_manager.create_session_name(
                 run_id, before.task_id, stage
             )
-            invocation = provider.invoke(
-                prompt=prompt,
-                task_path=task_path,
-                output_dir=output_dir / session_name,
-                timeouts=self.config.timeouts[stage],
-            )
+            self.memory.add_in_flight_session({
+                "task_key": str(task_path),
+                "task_id": before.task_id,
+                "stage": stage,
+                "session_name": session_name,
+                "provider": entry.alias,
+                "status": "running",
+            })
+            try:
+                invocation = provider.invoke(
+                    prompt=prompt,
+                    task_path=task_path,
+                    output_dir=output_dir / session_name,
+                    timeouts=self.config.timeouts[stage],
+                )
+            finally:
+                self.memory.remove_in_flight_session(str(task_path))
             last_invocation = invocation
             _logger.info(
                 "Provider %r used for stage %r (ok=%s)", entry.alias, stage, invocation.ok
