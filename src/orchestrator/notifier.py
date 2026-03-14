@@ -47,11 +47,13 @@ class Notifier:
         if not self._enabled:
             return
 
+        account_line = f"\n👤 Account: `{result.account}`" if result.account else ""
         message = (
             f"✅ *Stage Change*: `{result.task_id}`\n"
             f"🔄 `{result.before_stage}` → `{result.after_stage}`\n"
             f"🤖 Agent: `{result.after_agent}`\n"
             f"🛠 Provider: `{result.provider_alias}` ({result.provider_model or 'default'})"
+            f"{account_line}"
         )
         self._send_message(message)
 

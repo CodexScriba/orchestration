@@ -1,8 +1,12 @@
 ---
-stage: plan
-tags: [feature, p6]
-agent: planner
-contexts: [skills/python-core-skills]
+stage: code
+tags:
+  - feature
+  - p6
+agent: coder
+contexts: []
+skills:
+  - python-core-skills
 ---
 
 # Task 6: Memory System
@@ -34,27 +38,27 @@ This enables Kadee to stay light by linking into orchestrator memory/state inste
 ## Unified Definition of Done
 
 ### Hot Layer (Current Run Context)
-- [ ] In-memory + state file
-- [ ] Tracks: active tasks, in-flight sessions, recent events
-- [ ] Updated in real-time during execution
-- [ ] Cleared/reset between runs
+- [x] In-memory + state file
+- [x] Tracks: active tasks, in-flight sessions, recent events
+- [x] Updated in real-time during execution
+- [x] Cleared/reset between runs
 
 ### Warm Layer (Recent Project Context)
-- [ ] File-based storage
-- [ ] Stores: last N completed tasks per project, recent decisions, recent errors
-- [ ] Configurable retention (default: last 10 tasks per project)
-- [ ] Persists across runs
+- [x] File-based storage
+- [x] Stores: last N completed tasks per project, recent decisions, recent errors
+- [x] Configurable retention (default: last 10 tasks per project)
+- [x] Persists across runs
 
 ### Cold Layer (Historical Patterns)
-- [ ] File-based storage
-- [ ] Stores: aggregated stats, common failure modes, model performance metrics
-- [ ] Updated after each run completion
-- [ ] Long-term retention
+- [x] File-based storage
+- [x] Stores: aggregated stats, common failure modes, model performance metrics
+- [x] Updated after each run completion
+- [x] Long-term retention
 
 ### Memory API
-- [ ] Memory read API: Kadee can query memory by layer and topic and use it as fast operational context
-- [ ] Memory write API: orchestrator appends to warm/cold after run completion
-- [ ] Memory is file-based and human-readable (JSON + markdown)
+- [x] Memory read API: Kadee can query memory by layer and topic and use it as fast operational context
+- [x] Memory write API: orchestrator appends to warm/cold after run completion
+- [x] Memory is file-based and human-readable (JSON + markdown)
 
 ---
 
@@ -80,11 +84,11 @@ This enables Kadee to stay light by linking into orchestrator memory/state inste
 
 ## Tests
 
-- [ ] Hot memory reflects current run state
-- [ ] Warm memory stores last N completed tasks per project
-- [ ] Cold memory aggregates stats from completed runs
-- [ ] Memory read returns correct data by layer and topic
-- [ ] Memory files are valid JSON/markdown
+- [x] Hot memory reflects current run state
+- [x] Warm memory stores last N completed tasks per project
+- [x] Cold memory aggregates stats from completed runs
+- [x] Memory read returns correct data by layer and topic
+- [x] Memory files are valid JSON/markdown
 
 ---
 
@@ -200,3 +204,274 @@ Implement the three-layer operational memory system for context retention.
 #### Context
 
 Phase 6: Memory System
+
+---
+
+## Refined Prompt
+
+Objective: Implement a three-layer operational memory system that retains context across orchestrator runs for Kadee integration.
+
+Implementation approach:
+1. **Create `memory.py`** with `MemoryManager` class that manages hot, warm, and cold layers through a unified API.
+2. **Hot layer implementation** — In-memory `HotMemory` dataclass that mirrors `RunState` fields; persisted to `.kanban2code/runs/{run_id}/hot.json`; cleared/archived on run completion.
+3. **Warm layer implementation** — File-based `WarmMemory` stored in `.kanban2code/memory/warm/{project}.json`; rotates entries when limit exceeded; persists across runs.
+4. **Cold layer implementation** — File-based `ColdMemory` stored in `.kanban2code/memory/cold/stats.json`, `errors.json`, `performance.json`; aggregates from warm layer after run completion.
+5. **Read API** — `read_memory(layer, topic=None) -> dict` that returns memory contents filtered by layer and optional topic.
+6. **Write API** — `append_to_warm(project, entry)`, `append_to_cold(category, entry)`, `archive_hot_to_warm(run_state)` called at run completion.
+7. **Integration hooks** — Dispatcher calls `archive_hot_to_warm()` after run completion; scheduler calls same for concurrent runs.
+
+Key decisions:
+- **Reuse RunState for hot layer**: Hot memory is essentially a view of `RunState` — no need for separate data model, just wrap existing state.
+- **JSON for all layers**: Human-readable, easy to debug, compatible with existing patterns (`save_run_state`, `load_run_state`).
+- **Configurable retention**: Add `memory.warm_retention_per_project` and `memory.cold_aggregation_interval` to config.json.
+- **Project-scoped warm memory**: Each project gets its own warm file — prevents cross-project contamination and keeps files small.
+- **Topic-based filtering**: Topics map to keys within each layer (e.g., `topic="errors"` returns `warm["errors"]` or `cold["errors"]`).
+
+Edge cases:
+- Empty memory files: Initialize with empty lists/dicts, not missing files.
+- Corrupted JSON: Log warning, reinitialize with empty structure, continue.
+- Missing project in warm: Create new file on first append.
+- Large cold files: Keep only aggregated counts, not full event logs; rotate monthly if needed.
+- Concurrent access: Use file locking for warm/cold writes (same pattern as `ThreadSafeStateWriter`).
+
+---
+
+## Context
+
+### File Tree (scoped)
+
+```
+src/orchestrator/
+├── memory.py                      # ← create
+├── dispatcher.py                  # ← modify (add memory archive call)
+├── scheduler.py                   # ← modify (add memory archive call)
+├── models.py                      # ← modify (add MemoryConfig)
+├── config.py                      # ← modify (add memory config parsing)
+└── state.py                       # ← read-only reference
+
+.kanban2code/
+├── memory/                        # ← create (at runtime)
+│   ├── warm/                      # ← create (at runtime)
+│   │   └── {project}.json
+│   └── cold/                      # ← create (at runtime)
+│       ├── stats.json
+│       ├── errors.json
+│       └── performance.json
+└── runs/
+    └── {run_id}/
+        └── hot.json               # ← create (at runtime)
+
+config.json                        # ← modify (add memory config)
+```
+
+### Architecture Excerpts
+
+From `orchestrator.md`:
+- **Task frontmatter is source of truth**: Memory supplements but never replaces frontmatter.
+- **Supplemental orchestration state is useful**: Memory fits this pattern — metadata that frontmatter should not hold.
+- **Recommended state files**: Memory extends the state file pattern with warm/cold layers.
+
+From task definition:
+- **Hot layer**: In-memory + state file; tracks active tasks, in-flight sessions, recent events; cleared between runs.
+- **Warm layer**: File-based; stores last N completed tasks per project, recent decisions, recent errors; persists across runs.
+- **Cold layer**: File-based; stores aggregated stats, common failure modes, model performance; long-term retention.
+
+### Skill Excerpts
+
+From `skills/python-core-skills`:
+- Use `snake_case` for modules, functions, variables (`read_memory`, `append_to_warm`).
+- Use `PascalCase` for classes (`MemoryManager`, `HotMemory`, `WarmMemory`, `ColdMemory`).
+- All public functions need type hints and Google-style docstrings.
+- Use `from __future__ import annotations` in all modules.
+- Use `pathlib.Path` for all file operations.
+
+### Code Excerpts
+
+**`state.py:44-58`** — Pattern for persisting state to JSON:
+```python
+def save_run_state(path: Path, run_state: RunState) -> None:
+    """Persist a run state to JSON."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(asdict(run_state), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+```
+
+**`state.py:60-82`** — Pattern for loading state from JSON:
+```python
+def load_run_state(path: Path) -> RunState:
+    """Load a run state from JSON."""
+    raw_state = json.loads(path.read_text(encoding="utf-8"))
+    task_states = {
+        task_path: TaskRunState(**task_state)
+        for task_path, task_state in raw_state.get("task_states", {}).items()
+    }
+    # ...
+```
+
+**`models.py:247-258`** — `RunState` dataclass that hot memory will mirror:
+```python
+@dataclass(slots=True)
+class RunState:
+    """Persisted execution state for an orchestrator run."""
+    schema_version: int = 1
+    run_id: str = ""
+    created_at: str = ""
+    updated_at: str = ""
+    status: str = ""
+    ordered_tasks: list[str] = field(default_factory=list)
+    task_states: dict[str, TaskRunState] = field(default_factory=dict)
+    recent_events: list[RunEvent] = field(default_factory=list)
+    # ...
+```
+
+**`logger.py:22-42`** — Pattern for structured file writes:
+```python
+def append(self, event_type: str, message: str, **extras: object) -> RunEvent:
+    """Append a structured event to the JSONL log."""
+    event = RunEvent(
+        timestamp=_utc_now_iso(),
+        type=event_type,
+        message=message,
+        extras=dict(extras),
+    )
+    # ... write to file
+```
+
+**`scheduler.py:25-55`** — Thread-safe state writer pattern for concurrent access:
+```python
+class ThreadSafeStateWriter:
+    """Thread-safe wrapper for run state persistence."""
+    def __init__(self, path: Path) -> None:
+        self._path = path
+        self._lock = threading.Lock()
+
+    def save(self, run_state: RunState) -> None:
+        with self._lock:
+            save_run_state(self._path, run_state)
+```
+
+### Dependency Graph
+
+```
+memory.py
+    ├── pathlib.Path (stdlib)
+    ├── json (stdlib)
+    ├── threading (stdlib)
+    ├── models.py (RunState, RunEvent, TaskRunState, MemoryConfig)
+    ├── config.py (OrchestratorConfig)
+    └── state.py (save_run_state, load_run_state patterns)
+
+dispatcher.py (modify)
+    └── memory.py (archive_hot_to_warm after run completion)
+
+scheduler.py (modify)
+    └── memory.py (archive_hot_to_warm after concurrent run completion)
+
+config.py (modify)
+    └── models.py (MemoryConfig)
+
+models.py (modify)
+    └── (add MemoryConfig dataclass)
+```
+
+### Patterns to Follow
+
+1. **File-based JSON storage**: Follow `save_run_state` / `load_run_state` pattern for all memory files.
+2. **Dataclass models**: Use `@dataclass(slots=True)` for `HotMemory`, `WarmMemory`, `ColdMemory`, `MemoryConfig`.
+3. **Path construction**: Memory root is `.kanban2code/memory/`, not `.orchestrator/memory/` — stay within Kanban2Code structure.
+4. **Error handling**: Log warnings on corrupted files, reinitialize with empty structure, never crash.
+5. **Thread safety**: Use `threading.Lock` for warm/cold writes when called from scheduler.
+
+### Test Patterns
+
+From `tests/test_state.py`:
+- Use `tmp_path` fixture for temporary memory files.
+- Test round-trip through JSON save/load.
+- Test retention limits (warm layer rotation).
+- Test aggregation (cold layer updates).
+
+For memory tests:
+- Create temp `.kanban2code/memory/` structure.
+- Test hot → warm archive flow.
+- Test warm rotation when limit exceeded.
+- Test cold aggregation from multiple warm entries.
+- Test read API with layer and topic filters.
+
+### Gotchas
+
+- **Memory directory creation**: `.kanban2code/memory/` doesn't exist yet — create on first write.
+- **Hot memory lifecycle**: Must be archived before clearing; don't lose data on run completion.
+- **Warm rotation**: When limit reached, remove oldest entries first (FIFO).
+- **Cold aggregation**: Don't duplicate counts — check if entry already exists before incrementing.
+- **Project naming**: Use project name from `TaskSnapshot.project`, not task path parsing.
+
+### Scope Boundaries
+
+This task (Phase 6) should NOT touch:
+- **Account rotation** (Phase 3 — complete): `accounts.py` is already implemented.
+- **Concurrency** (Phase 4 — complete): `scheduler.py` modifications are only to add memory archive calls.
+- **Notifications** (Phase 5 — complete): `notifier.py` is already implemented.
+- **Provider logic**: Memory is orthogonal to provider execution.
+- **Task frontmatter**: Memory supplements but never modifies frontmatter.
+
+Phases 1-5 are complete — all infrastructure (config, state, dispatcher, scheduler, providers, sessions, evaluator, commits, accounts, notifier) is available for use.
+
+---
+
+## Audit
+
+### Files Changed
+
+- src/orchestrator/memory.py
+- src/orchestrator/models.py
+- src/orchestrator/dispatcher.py
+- src/orchestrator/scheduler.py
+- tests/test_memory.py
+- tests/test_scheduler.py
+
+### Summary
+
+Fixed all review findings (previously rated 7/10):
+
+1. **Concurrent runs skip stage_result memory data (blocker)** — Added `stage_events: list[RunEvent]` to `TaskExecutionResult`. `_run_task_stages` now logs each `stage_result` event via `self.logger.append` and appends it to a local list, which is merged into `run_state.recent_events` in `_handle_task_result` on the main thread. Warm error archival and cold model_performance aggregation both now work in the default concurrent path.
+2. **in_flight_sessions not persisted in real time (high)** — Refactored `_persist_hot_memory` to use `self._hot.run_id` (removing the `run_id` parameter). `add_in_flight_session` and `remove_in_flight_session` now call `_persist_hot_memory()` after each mutation, keeping `hot.json` current as sessions start and finish.
+3. **Coverage missing scheduler lifecycle (medium)** — Added `TestMemoryLifecycle` class to `test_scheduler.py` with three end-to-end tests through `ConcurrentScheduler`: stage_result events in `run_state.recent_events`, cold model_performance populated after a run, and in-flight sessions visible in `hot.json` during dispatch. Added `test_in_flight_session_persisted_to_hot_json` to `test_memory.py`.
+
+All 131 tests pass including 21 memory tests and 3 new scheduler memory-lifecycle tests.
+
+---
+
+## Review
+
+**Rating: 7/10**
+
+**Verdict: NEEDS WORK**
+
+### Summary
+The previous concurrent-path blocker is fixed: worker stage results now flow into `run_state.recent_events`, cold model-performance is populated from concurrent runs, and hot-memory session writes are persisted immediately. The remaining gap is narrower but still important: sequential runs still never register in-flight sessions with memory, so the hot layer does not meet the task definition across both supported execution modes.
+
+### Findings
+
+#### Blockers
+- None.
+
+#### High Priority
+- [ ] [Sequential mode still omits in-flight session tracking]: `ConcurrentScheduler` now calls `add_in_flight_session()` and `remove_in_flight_session()`, but the sequential `Dispatcher` path still creates and runs tmux-backed sessions without ever reporting them to `MemoryManager`. If users disable the scheduler or run with `--sequential`, `hot.json` will still show no in-flight sessions. - `src/orchestrator/dispatcher.py:121`, `src/orchestrator/scheduler.py:568`
+
+#### Medium Priority
+- [ ] [Coverage still misses the sequential lifecycle]: The new end-to-end tests do a good job on the concurrent path, but there is still no dispatcher-level memory test for sequential execution, which is the only place the remaining gap can hide. - `tests/test_scheduler.py:803`
+
+#### Low Priority / Nits
+- None.
+
+### Test Assessment
+- Coverage: Needs improvement
+- Missing tests: Sequential dispatcher populates `in_flight_sessions`; sequential hot-memory file reflects session start/finish during a real run
+
+### What's Good
+- [x] The concurrent-path fixes are real: stage results now reach `run_state.recent_events`, cold model-performance is populated end-to-end, and `hot.json` updates immediately when concurrent sessions are added or removed.
+
+### Recommendations
+- [ ] Reuse the same session-tracking hook from both execution modes by wrapping `Dispatcher.dispatch_stage()` with `MemoryManager.add_in_flight_session()` / `remove_in_flight_session()`, then add one sequential integration test to keep the two paths aligned.

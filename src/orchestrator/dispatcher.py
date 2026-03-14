@@ -12,6 +12,7 @@ from orchestrator.commits import commit_after_audit
 from orchestrator.config import OrchestratorConfig, load_config
 from orchestrator.evaluator import evaluate_stage_result
 from orchestrator.logger import JsonlLogger
+from orchestrator.memory import MemoryManager
 from orchestrator.models import FallbackChainEntry, ProviderAliasConfig, RunState, StageResult, TaskRunState
 from orchestrator.notifier import Notifier
 from orchestrator.prompts import assemble_prompt
@@ -55,6 +56,7 @@ class Dispatcher:
         self.run_state_path = run_state_path or self.repo_root / ".kanban2code" / "runs" / "latest.json"
         self.logger = logger or JsonlLogger(self.repo_root / ".kanban2code" / "runs" / "events.jsonl")
         self.notifier = Notifier(self.config)
+        self.memory = MemoryManager(self.repo_root, self.config.memory)
         pool = self.config.accounts.codex_pool
         self.account_manager = account_manager or (
             AccountManager(pool=pool) if pool else None
@@ -78,6 +80,7 @@ class Dispatcher:
 
         chain = self._get_fallback_chain(provider_key)
         last_invocation = None
+        active_account: str | None = None
 
         for entry in chain:
             alias_config = ProviderAliasConfig(
@@ -93,10 +96,10 @@ class Dispatcher:
 
             if isinstance(provider, CodexProvider) and self.account_manager:
                 try:
-                    account = self.account_manager.get_account_for_task(before.task_id)
+                    active_account = self.account_manager.get_account_for_task(before.task_id)
                     _logger.info(
                         "Codex account %r active for task %r stage %r",
-                        account, before.task_id, stage,
+                        active_account, before.task_id, stage,
                     )
                 except Exception as exc:  # noqa: BLE001
                     _logger.error("Account rotation failed for task %r: %s", before.task_id, exc)
@@ -140,6 +143,7 @@ class Dispatcher:
                     provider_key=provider_key,
                     provider_alias=entry.alias,
                     provider_model=entry.model or provider.provider_config.model,
+                    account=active_account,
                 )
 
             _logger.warning(
@@ -167,6 +171,7 @@ class Dispatcher:
             provider_key=provider_key,
             provider_alias=chain[-1].alias if chain else "",
             provider_model=None,
+            account=active_account,
         )
 
     def _get_fallback_chain(self, provider_key: str) -> list[FallbackChainEntry]:
@@ -192,6 +197,9 @@ class Dispatcher:
         active_run_state = run_state or self._new_run_state(ordered_tasks)
         ordered_task_paths = [Path(path) for path in active_run_state.ordered_tasks]
 
+        # Initialize hot memory
+        self.memory.init_hot_memory(active_run_state)
+
         for index in range(active_run_state.current_index, len(ordered_task_paths)):
             task_path = ordered_task_paths[index]
             task_key = str(task_path)
@@ -204,6 +212,9 @@ class Dispatcher:
                 active_run_state.current_stage = snapshot.stage
                 save_run_state(self.run_state_path, active_run_state)
 
+                # Update hot memory
+                self.memory.update_hot_memory(active_run_state)
+
                 if snapshot.stage == "completed":
                     task_state.status = "completed"
                     break
@@ -211,6 +222,9 @@ class Dispatcher:
                 result = self.dispatch_stage(task_path=task_path, run_id=active_run_state.run_id)
                 self._record_stage_result(active_run_state, task_key, task_state, result)
                 save_run_state(self.run_state_path, active_run_state)
+
+                # Update hot memory after stage result
+                self.memory.update_hot_memory(active_run_state)
 
                 if result.kind == "success":
                     if result.stage == "audit" and result.after_stage == "completed":
@@ -232,6 +246,8 @@ class Dispatcher:
                         task_state.audit_failures
                         > self.config.retry_policy.audit_failure_cycles_before_handoff
                     ):
+                        # Archive hot memory before handoff
+                        self.memory.archive_hot_to_warm(active_run_state)
                         return self._handoff(
                             active_run_state,
                             task_path,
@@ -246,6 +262,8 @@ class Dispatcher:
                 attempts = task_state.transport_attempts.get(result.stage, 0) + 1
                 task_state.transport_attempts[result.stage] = attempts
                 if attempts >= self.config.retry_policy.transport_max_attempts:
+                    # Archive hot memory before handoff
+                    self.memory.archive_hot_to_warm(active_run_state)
                     return self._handoff(
                         active_run_state,
                         task_path,
@@ -263,6 +281,10 @@ class Dispatcher:
         active_run_state.current_task = None
         active_run_state.current_stage = None
         save_run_state(self.run_state_path, active_run_state)
+
+        # Archive hot memory to warm/cold after run completion
+        self.memory.archive_hot_to_warm(active_run_state)
+
         return active_run_state
 
     def resume(self, run_state: RunState) -> RunState:
@@ -358,15 +380,23 @@ class Dispatcher:
             after_stage=result.after_stage,
             provider_alias=result.provider_alias,
             provider_model=result.provider_model,
+            error_message=result.error_message,
         )
         append_recent_event(run_state, event, self.config.logging.retain_recent_events)
+        self.post_stage_hook(result)
 
-        # Notify on stage change (success) or blocked
+    def post_stage_hook(self, result: StageResult) -> None:
+        """Shared observability hook: notifications + board state update.
+
+        Called after every stage result, from both the sequential dispatcher
+        and the concurrent scheduler.
+        """
         if result.kind == "success":
             self.notifier.notify_stage_change(result)
         elif result.kind == "blocked":
-            self.notifier.notify_escalation(result.task_id, result.kind, result.error_message or "Unknown block")
-
+            self.notifier.notify_escalation(
+                result.task_id, result.kind, result.error_message or "Unknown block"
+            )
         self._update_board_state()
 
     def _update_board_state(self) -> None:

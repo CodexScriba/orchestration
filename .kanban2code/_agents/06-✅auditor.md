@@ -97,4 +97,4 @@ agent: auditor     # or 'coder' if needs work
 ---
 ```
 
-Do not just mention the stage change in your review - actually edit the frontmatter!
+Do not just mention the stage change in your review - actually edit the frontmatter! (Audit must always end with an explicit stage move: `audit` -> `completed` on pass, or `audit` -> `code` on rework. If the task is re-coded later, it must be moved back from `code` -> `audit` before the next audit.)

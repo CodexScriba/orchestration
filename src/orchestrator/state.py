@@ -11,6 +11,8 @@ from pathlib import Path
 from orchestrator.models import RunEvent, RunState, TaskRunState, TaskSnapshot
 from orchestrator.scanner import index_tasks_by_project_and_stage
 
+CANONICAL_STAGES = ("inbox", "plan", "code", "audit", "completed")
+
 
 def build_board_index(tasks: Sequence[TaskSnapshot]) -> dict[str, dict[str, list[TaskSnapshot]]]:
     """Build a project and stage index for task snapshots.
@@ -55,7 +57,7 @@ def build_detailed_board_state(tasks: Sequence[TaskSnapshot]) -> dict[str, dict[
 
     board_state: dict[str, dict[str, list[dict]]] = {}
     for project_name, stage_index in build_board_index(tasks).items():
-        board_state[project_name] = {}
+        project_stages: dict[str, list[dict]] = {stage: [] for stage in CANONICAL_STAGES}
         for stage_name, stage_tasks in stage_index.items():
             detailed_tasks = []
             for task in stage_tasks:
@@ -73,7 +75,8 @@ def build_detailed_board_state(tasks: Sequence[TaskSnapshot]) -> dict[str, dict[
                         "last_updated": last_updated,
                     }
                 )
-            board_state[project_name][stage_name] = detailed_tasks
+            project_stages[stage_name] = detailed_tasks
+        board_state[project_name] = project_stages
     return board_state
 
 

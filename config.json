@@ -108,5 +108,9 @@
   "scheduler": {
     "max_concurrent": 4,
     "enabled": true
+  },
+  "memory": {
+    "warm_retention_per_project": 10,
+    "cold_aggregation_interval": 1
   }
 }

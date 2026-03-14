@@ -1,8 +1,12 @@
 ---
-stage: code
-tags: [feature, p5]
-agent: coder
-contexts: [skills/python-core-skills]
+stage: completed
+tags:
+  - feature
+  - p5
+agent: auditor
+contexts: []
+skills:
+  - python-core-skills
 ---
 
 # Task 5: Communication and Monitoring
@@ -34,24 +38,24 @@ Build the communication and monitoring layer for the orchestrator:
 ## Unified Definition of Done
 
 ### Telegram Notifier
-- [ ] Sends Telegram message on every stage change
-- [ ] Includes: task ID, stage transition, account used, model/provider used
-- [ ] Sends on blocked/stalled/escalated states with reason
-- [ ] Bot token and chat ID loaded from config (not hardcoded)
-- [ ] Graceful failure: notification errors do not block execution
+- [x] Sends Telegram message on every stage change
+- [x] Includes: task ID, stage transition, account used, model/provider used
+- [x] Sends on blocked/stalled/escalated states with reason
+- [x] Bot token and chat ID loaded from config (not hardcoded)
+- [x] Graceful failure: notification errors do not block execution
 
 ### Board State View
-- [ ] Produces a JSON state file mapping `{project: {stage: [{task_id, title, agent, bounces, last_updated}]}}`
-- [ ] Updated after every stage transition
-- [ ] Also produces a human-readable markdown summary
-- [ ] Kadee can read this file to understand board status without scanning every task
+- [x] Produces a JSON state file mapping `{project: {stage: [{task_id, title, agent, bounces, last_updated}]}}`
+- [x] Updated after every stage transition
+- [x] Also produces a human-readable markdown summary
+- [x] Kadee can read this file to understand board status without scanning every task
 
 ### Smoke Test Suite
-- [ ] `smoke-test` CLI subcommand calls Codex, Claude, Gemini, and Qwen once each during development
-- [ ] Sends a trivial prompt (e.g., "Say exactly: hi" or "Say exactly: hello") and checks for a response
-- [ ] Reports pass/fail per provider with error details
-- [ ] Tests: Codex, Claude, Gemini, and Qwen explicitly
-- [ ] Can be run independently before starting real task execution
+- [x] `smoke-test` CLI subcommand calls Codex, Claude, Gemini, and Qwen once each during development
+- [x] Sends a trivial prompt (e.g., "Say exactly: hi" or "Say exactly: hello") and checks for a response
+- [x] Reports pass/fail per provider with error details
+- [x] Tests: Codex, Claude, Gemini, and Qwen explicitly
+- [x] Can be run independently before starting real task execution
 
 ---
 
@@ -87,21 +91,21 @@ Build the communication and monitoring layer for the orchestrator:
 ## Tests
 
 ### Notifier Tests
-- [ ] Notification sent on stage change (mocked Telegram API)
-- [ ] Notification includes required fields
-- [ ] Notification failure does not raise or block the run
-- [ ] Bot token and chat ID loaded from config
+- [x] Notification sent on stage change (mocked Telegram API)
+- [x] Notification includes required fields
+- [x] Notification failure does not raise or block the run
+- [x] Bot token and chat ID loaded from config
 
 ### Board State Tests
-- [ ] Board state JSON matches expected structure from sample tasks
-- [ ] Board state updates after stage transition
-- [ ] Markdown summary is readable and correctly formatted
+- [x] Board state JSON matches expected structure from sample tasks
+- [x] Board state updates after stage transition
+- [x] Markdown summary is readable and correctly formatted
 
 ### Smoke Test Tests
-- [ ] Smoke test runs all configured providers
-- [ ] Pass/fail reported per provider
-- [ ] Missing provider binary reported as failure, not crash
-- [ ] Auth failure reported clearly
+- [x] Smoke test runs all configured providers
+- [x] Pass/fail reported per provider
+- [x] Missing provider binary reported as failure, not crash
+- [x] Auth failure reported clearly
 
 ---
 
@@ -186,11 +190,11 @@ Implement the Telegram notification system for stage changes and escalations.
 
 #### Definition of Done
 
-- [ ] Sends Telegram message on every stage change
-- [ ] Includes: task ID, stage transition, account used, model/provider used
-- [ ] Sends on blocked/stalled/escalated states with reason
-- [ ] Bot token and chat ID loaded from config (not hardcoded)
-- [ ] Graceful failure: notification errors do not block execution
+- [x] Sends Telegram message on every stage change
+- [x] Includes: task ID, stage transition, account used, model/provider used
+- [x] Sends on blocked/stalled/escalated states with reason
+- [x] Bot token and chat ID loaded from config (not hardcoded)
+- [x] Graceful failure: notification errors do not block execution
 
 #### Files
 
@@ -198,10 +202,10 @@ Implement the Telegram notification system for stage changes and escalations.
 
 #### Tests
 
-- [ ] Notification sent on stage change (mocked Telegram API)
-- [ ] Notification includes required fields
-- [ ] Notification failure does not raise or block the run
-- [ ] Bot token and chat ID loaded from config
+- [x] Notification sent on stage change (mocked Telegram API)
+- [x] Notification includes required fields
+- [x] Notification failure does not raise or block the run
+- [x] Bot token and chat ID loaded from config
 
 #### Context
 
@@ -217,10 +221,10 @@ Implement the JSON and markdown board state view generator.
 
 #### Definition of Done
 
-- [ ] Produces a JSON state file mapping `{project: {stage: [{task_id, title, agent, bounces, last_updated}]}}`
-- [ ] Updated after every stage transition
-- [ ] Also produces a human-readable markdown summary
-- [ ] Kadee can read this file to understand board status without scanning every task
+- [x] Produces a JSON state file mapping `{project: {stage: [{task_id, title, agent, bounces, last_updated}]}}`
+- [x] Updated after every stage transition
+- [x] Also produces a human-readable markdown summary
+- [x] Kadee can read this file to understand board status without scanning every task
 
 #### Files
 
@@ -228,9 +232,9 @@ Implement the JSON and markdown board state view generator.
 
 #### Tests
 
-- [ ] Board state JSON matches expected structure from sample tasks
-- [ ] Board state updates after stage transition
-- [ ] Markdown summary is readable and correctly formatted
+- [x] Board state JSON matches expected structure from sample tasks
+- [x] Board state updates after stage transition
+- [x] Markdown summary is readable and correctly formatted
 
 #### Context
 
@@ -246,11 +250,11 @@ Implement a smoke test suite to verify provider health and connectivity.
 
 #### Definition of Done
 
-- [ ] `smoke-test` CLI subcommand calls Codex, Claude, Gemini, and Qwen once each during development
-- [ ] Sends a trivial prompt (e.g., "Say exactly: hi" or "Say exactly: hello") and checks for a response
-- [ ] Reports pass/fail per provider with error details
-- [ ] Tests: Codex, Claude, Gemini, and Qwen explicitly
-- [ ] Can be run independently before starting real task execution
+- [x] `smoke-test` CLI subcommand calls Codex, Claude, Gemini, and Qwen once each during development
+- [x] Sends a trivial prompt (e.g., "Say exactly: hi" or "Say exactly: hello") and checks for a response
+- [x] Reports pass/fail per provider with error details
+- [x] Tests: Codex, Claude, Gemini, and Qwen explicitly
+- [x] Can be run independently before starting real task execution
 
 #### Files
 
@@ -258,10 +262,10 @@ Implement a smoke test suite to verify provider health and connectivity.
 
 #### Tests
 
-- [ ] Smoke test runs all configured providers
-- [ ] Pass/fail reported per provider
-- [ ] Missing provider binary reported as failure, not crash
-- [ ] Auth failure reported clearly
+- [x] Smoke test runs all configured providers
+- [x] Pass/fail reported per provider
+- [x] Missing provider binary reported as failure, not crash
+- [x] Auth failure reported clearly
 
 #### Context
 
@@ -336,3 +340,52 @@ Python Core Skills (PEP 8 + Modern Best Practices):
 ### Scope Boundaries
 - Do not modify provider implementation details (e.g., `claude.py`).
 - Do not change the core run logic in `dispatcher.py` beyond adding the hooks.
+
+---
+
+## Audit
+
+### Files Touched
+- src/orchestrator/notifier.py
+- src/orchestrator/smoke.py
+- src/orchestrator/state.py
+- src/orchestrator/dispatcher.py
+- src/orchestrator/cli.py
+- tests/test_phase5.py
+
+---
+
+## Review
+
+**Rating: 9/10**
+
+**Verdict: ACCEPTED**
+
+### Summary
+Re-audit of the current code shows the previous smoke-family and stalled-notification findings are resolved. The communication and monitoring layer now meets the Phase 5 definition of done, and the supporting test coverage is strong.
+
+### Findings
+
+#### Blockers
+- None.
+
+#### High Priority
+- None.
+
+#### Medium Priority
+- None.
+
+#### Low Priority / Nits
+- None.
+
+### Test Assessment
+- Coverage: Adequate
+- Missing tests: Optional live end-to-end smoke verification against real provider CLIs and credentials would add runtime confidence, but the current unit/integration coverage is sufficient for acceptance
+
+### What&apos;s Good
+- `SmokeTester` now resolves provider families from provider metadata, preserves configured model/override settings, and covers the required provider families without relying on alias substrings.
+- The shared `post_stage_hook` keeps sequential and concurrent observability behavior aligned, and dependency-stalled tasks now emit escalation notifications with a reason.
+- The board-state JSON includes the canonical stage buckets and the Phase 5 test suite now covers the previously missed behaviors directly.
+
+### Recommendations
+- Consider adding an opt-in live smoke run to docs or CI if you want validation against real installed CLIs and credentials in addition to the mocked suite.

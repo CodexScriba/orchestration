@@ -14,7 +14,9 @@ from typing import TYPE_CHECKING
 
 from orchestrator.config import OrchestratorConfig, load_config
 from orchestrator.logger import JsonlLogger
+from orchestrator.memory import MemoryManager
 from orchestrator.models import (
+    RunEvent,
     RunState,
     StageResult,
     TaskExecutionResult,
@@ -271,6 +273,7 @@ class ConcurrentScheduler:
 
         self._state_writer = ThreadSafeStateWriter(self._run_state_path)
         self._conflict_detector = ConflictDetector(self.repo_root)
+        self._memory = MemoryManager(self.repo_root, self.config.memory)
         self._executor: ThreadPoolExecutor | None = None
         self._futures: dict[str, Future] = {}
         self._blocking_task_keys: set[str] = set()
@@ -320,13 +323,20 @@ class ConcurrentScheduler:
 
         active_run_state = run_state or self.dispatcher._new_run_state(ordered_tasks)
         ordered_task_paths = [Path(path) for path in active_run_state.ordered_tasks]
+        self._blocking_task_keys.clear()
         self._state_writer.save(active_run_state)
+
+        # Initialize hot memory
+        self._memory.init_hot_memory(active_run_state)
 
         max_workers = self._compute_max_workers(len(ordered_task_paths))
         self._executor = ThreadPoolExecutor(max_workers=max_workers)
 
         try:
-            return self._run_concurrent(active_run_state, ordered_task_paths)
+            result = self._run_concurrent(active_run_state, ordered_task_paths)
+            # Archive hot memory to warm/cold after run completion
+            self._memory.archive_hot_to_warm(result)
+            return result
         finally:
             self._executor.shutdown(wait=True)
             self._executor = None
@@ -406,6 +416,8 @@ class ConcurrentScheduler:
             for task_key in done_futures:
                 future = self._futures.pop(task_key)
                 self._conflict_detector.unregister_task(task_key)
+                self._blocking_task_keys.discard(task_key)
+                self._memory.remove_in_flight_session(task_key)
 
                 try:
                     exec_result = future.result()
@@ -435,6 +447,7 @@ class ConcurrentScheduler:
 
             if done_futures:
                 self._state_writer.save(run_state)
+                self._memory.update_hot_memory(run_state)
 
     def _submit_eligible_tasks(
         self,
@@ -451,6 +464,9 @@ class ConcurrentScheduler:
             running_task_ids: Set of currently running task IDs.
         """
         if not self._executor:
+            return 0
+
+        if self._blocking_task_keys:
             return 0
 
         max_concurrent = self._compute_max_workers(len(pending_tasks) + len(self._futures))
@@ -537,6 +553,8 @@ class ConcurrentScheduler:
 
         # Register files for conflict detection
         self._conflict_detector.register_task(task_key, task_info.file_paths)
+        if task_info.has_blocking_tag:
+            self._blocking_task_keys.add(task_key)
 
         # Log dispatch
         _logger.info(
@@ -545,6 +563,11 @@ class ConcurrentScheduler:
             len(self._futures) + 1,
             self._compute_max_workers(0),
             len(task_info.file_paths),
+        )
+
+        # Track as in-flight session
+        self._memory.add_in_flight_session(
+            {"task_key": task_key, "task_id": task_snapshot.task_id, "status": "running"}
         )
 
         # Submit to executor
@@ -574,6 +597,7 @@ class ConcurrentScheduler:
         task_key = str(task_path)
         task_state = TaskRunState()
         result: StageResult | None = None
+        stage_events: list[RunEvent] = []
 
         try:
             while True:
@@ -588,6 +612,22 @@ class ConcurrentScheduler:
                     task_path=task_path,
                     run_id=run_id,
                 )
+
+                # Log stage result to JSONL and collect for run_state merge.
+                event = self.logger.append(
+                    "stage_result",
+                    f"{Path(task_key).name} {result.stage} -> {result.kind}",
+                    task=task_key,
+                    result=result.kind,
+                    after_stage=result.after_stage,
+                    provider_alias=result.provider_alias,
+                    provider_model=result.provider_model,
+                    error_message=result.error_message,
+                )
+                stage_events.append(event)
+
+                # Fire shared observability hook (notifications + board state).
+                self.dispatcher.post_stage_hook(result)
 
                 # Update local task state.
                 task_state.last_stage = result.stage
@@ -649,6 +689,7 @@ class ConcurrentScheduler:
             task_key=task_key,
             stage_result=result or StageResult(kind="completed", stage="completed"),
             task_state=task_state,
+            stage_events=stage_events,
         )
 
     def _persist_task_state(self, task_key: str, task_state: TaskRunState) -> None:
@@ -681,8 +722,11 @@ class ConcurrentScheduler:
             task_key: The task path string.
             exec_result: The task execution result.
         """
-        result = exec_result.stage_result
         task_status = exec_result.task_state.status
+        # Merge stage_result events collected by the worker thread
+        for stage_event in exec_result.stage_events:
+            append_recent_event(run_state, stage_event, self.config.logging.retain_recent_events)
+        # Append the task_complete summary event
         event = self.logger.append(
             "task_complete",
             f"{Path(task_key).name} -> {task_status}",
@@ -756,6 +800,11 @@ class ConcurrentScheduler:
                 dependencies=unmet_dependencies,
             )
             append_recent_event(run_state, event, self.config.logging.retain_recent_events)
+
+            # Notify about the blocked/stalled task.
+            self.dispatcher.notifier.notify_escalation(
+                task_info.task_id, "blocked", task_state.last_error or "Unresolved dependencies"
+            )
 
         for task_path in stalled_tasks:
             pending_tasks.remove(task_path)

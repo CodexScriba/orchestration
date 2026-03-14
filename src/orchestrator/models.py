@@ -149,6 +149,14 @@ class SchedulerConfig:
 
 
 @dataclass(slots=True)
+class MemoryConfig:
+    """Memory system configuration for hot, warm, and cold layers."""
+
+    warm_retention_per_project: int = 10
+    cold_aggregation_interval: int = 1
+
+
+@dataclass(slots=True)
 class TaskFileInfo:
     """File set information for a task, used in conflict detection."""
 
@@ -185,6 +193,7 @@ class OrchestratorConfig:
     notifications: NotificationConfig = field(default_factory=NotificationConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     scheduler: SchedulerConfig = field(default_factory=SchedulerConfig)
+    memory: MemoryConfig = field(default_factory=MemoryConfig)
 
 
 @dataclass(slots=True)
@@ -236,6 +245,7 @@ class StageResult:
     provider_key: str = ""
     provider_alias: str = ""
     provider_model: str | None = None
+    account: str | None = None
     exit_code: int | None = None
     output_paths: dict[str, str] = field(default_factory=dict)
     error_message: str | None = None
@@ -283,3 +293,4 @@ class TaskExecutionResult:
     task_key: str = ""
     stage_result: StageResult | None = None
     task_state: TaskRunState = field(default_factory=TaskRunState)
+    stage_events: list[RunEvent] = field(default_factory=list)

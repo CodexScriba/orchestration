@@ -795,3 +795,149 @@ class TestTaskStatePropagation:
         run_state = scheduler.run(ordered_tasks=[task_path])
 
         assert run_state.task_states[str(task_path)].status == "completed"
+
+
+class TestMemoryLifecycle:
+    """Tests for memory integration with ConcurrentScheduler."""
+
+    def test_stage_result_events_recorded_in_run_state(self, tmp_path: Path) -> None:
+        """stage_result events from worker threads appear in run_state.recent_events."""
+        repo_root = tmp_path
+        config_path = repo_root / "config.json"
+        config_path.write_text(Path("config.json").read_text(encoding="utf-8"), encoding="utf-8")
+
+        task_path = repo_root / ".kanban2code" / "projects" / "orch" / "task1.md"
+        _write_task(task_path, stage="code", agent="coder")
+
+        state_path = repo_root / ".kanban2code" / "runs" / "latest.json"
+        dispatcher = ScriptedDispatcher(
+            repo_root=repo_root,
+            config_path=config_path,
+            run_state_path=state_path,
+            scripted_results={
+                "task1": [
+                    StageResult(
+                        kind="success",
+                        stage="code",
+                        success=True,
+                        task_path=str(task_path),
+                        task_id="task1",
+                        before_stage="code",
+                        after_stage="completed",
+                        after_agent="auditor",
+                        provider_model="claude-opus-4-6",
+                    )
+                ]
+            },
+        )
+
+        scheduler = ConcurrentScheduler(
+            repo_root=repo_root,
+            config=load_config(config_path),
+            dispatcher=dispatcher,
+            run_state_path=state_path,
+        )
+
+        run_state = scheduler.run(ordered_tasks=[task_path])
+
+        # stage_result events from the worker thread must appear in run_state.recent_events
+        event_types = [e.type for e in run_state.recent_events]
+        assert "stage_result" in event_types, (
+            f"No stage_result event found in recent_events: {event_types}"
+        )
+
+    def test_cold_model_performance_populated_after_concurrent_run(self, tmp_path: Path) -> None:
+        """Cold model_performance is populated from stage_result events after a concurrent run."""
+        import json
+
+        repo_root = tmp_path
+        config_path = repo_root / "config.json"
+        config_path.write_text(Path("config.json").read_text(encoding="utf-8"), encoding="utf-8")
+
+        task_path = repo_root / ".kanban2code" / "projects" / "orch" / "task1.md"
+        _write_task(task_path, stage="code", agent="coder")
+
+        state_path = repo_root / ".kanban2code" / "runs" / "latest.json"
+        dispatcher = ScriptedDispatcher(
+            repo_root=repo_root,
+            config_path=config_path,
+            run_state_path=state_path,
+            scripted_results={
+                "task1": [
+                    StageResult(
+                        kind="success",
+                        stage="code",
+                        success=True,
+                        task_path=str(task_path),
+                        task_id="task1",
+                        before_stage="code",
+                        after_stage="completed",
+                        after_agent="auditor",
+                        provider_model="claude-opus-4-6",
+                    )
+                ]
+            },
+        )
+
+        scheduler = ConcurrentScheduler(
+            repo_root=repo_root,
+            config=load_config(config_path),
+            dispatcher=dispatcher,
+            run_state_path=state_path,
+        )
+
+        scheduler.run(ordered_tasks=[task_path])
+
+        perf_path = repo_root / ".kanban2code" / "memory" / "cold" / "performance.json"
+        assert perf_path.exists(), "performance.json not created"
+        raw = json.loads(perf_path.read_text(encoding="utf-8"))
+        assert "claude-opus-4-6" in raw["model_performance"], (
+            f"provider model not in cold performance: {raw['model_performance']}"
+        )
+        assert raw["model_performance"]["claude-opus-4-6"]["success"] == 1
+
+    def test_in_flight_sessions_tracked_in_hot_json(self, tmp_path: Path) -> None:
+        """Tasks appear in hot.json in_flight_sessions while running."""
+        import json
+        import threading
+
+        repo_root = tmp_path
+        config_path = repo_root / "config.json"
+        config_path.write_text(Path("config.json").read_text(encoding="utf-8"), encoding="utf-8")
+
+        task_path = repo_root / ".kanban2code" / "projects" / "orch" / "task1.md"
+        _write_task(task_path, stage="code", agent="coder")
+
+        state_path = repo_root / ".kanban2code" / "runs" / "latest.json"
+
+        # Capture hot.json mid-run while task is dispatching
+        observed_in_flight: list[list] = []
+        original_dispatch = None
+
+        class ObservingDispatcher(ScriptedDispatcher):
+            def dispatch_stage(self, *, task_path: Path, run_id: str) -> StageResult:
+                hot_path = repo_root / ".kanban2code" / "runs" / run_id / "hot.json"
+                if hot_path.exists():
+                    raw = json.loads(hot_path.read_text(encoding="utf-8"))
+                    observed_in_flight.append(raw.get("in_flight_sessions", []))
+                return super().dispatch_stage(task_path=task_path, run_id=run_id)
+
+        dispatcher = ObservingDispatcher(
+            repo_root=repo_root,
+            config_path=config_path,
+            run_state_path=state_path,
+        )
+
+        scheduler = ConcurrentScheduler(
+            repo_root=repo_root,
+            config=load_config(config_path),
+            dispatcher=dispatcher,
+            run_state_path=state_path,
+        )
+
+        scheduler.run(ordered_tasks=[task_path])
+
+        # At least one snapshot during dispatch should show the task as in-flight
+        assert any(len(sessions) > 0 for sessions in observed_in_flight), (
+            f"No in-flight sessions observed during run: {observed_in_flight}"
+        )

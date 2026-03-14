@@ -18,6 +18,7 @@ def evaluate_stage_result(
     provider_key: str,
     provider_alias: str,
     provider_model: str | None,
+    account: str | None = None,
 ) -> StageResult:
     """Evaluate semantic stage outcome from task snapshots."""
 
@@ -38,6 +39,7 @@ def evaluate_stage_result(
         before_stage=before.stage,
         after_stage=after.stage,
         after_agent=after.agent,
+        account=account,
     )
     if not invocation.ok:
         return base_result

@@ -16,6 +16,35 @@ See: [docs/architecture.md](docs/architecture.md) for the full architecture docu
 ## Accepted Task Updates
 
 - date: 2026-03-13
+  - task: `task5-communication-and-monitoring`
+  - files-updated:
+    - `src/orchestrator/state.py` (adds detailed board-state JSON with canonical stage buckets plus markdown board summaries for Kadee)
+    - `src/orchestrator/dispatcher.py` (adds a shared post-stage observability hook so notifications and board-state refresh run after stage transitions)
+    - `src/orchestrator/scheduler.py` (reuses the shared observability hook during concurrent runs and notifies on dependency-stalled blocked tasks)
+    - `src/orchestrator/models.py` and `src/orchestrator/evaluator.py` (carry active account metadata through `StageResult` so notifications can include the selected account)
+    - `src/orchestrator/cli.py` (registers the `smoke-test` command)
+  - new-files-created:
+    - `src/orchestrator/notifier.py` - Telegram notification delivery for stage changes, blocks, and escalations
+    - `src/orchestrator/smoke.py` - Provider-family smoke testing with metadata-based alias resolution and per-family coverage reporting
+  - tests-added:
+    - `tests/test_phase5.py` now covers notifier payloads, canonical board-state buckets, metadata-based smoke-family resolution, configured model preservation, and stalled dependency notifications
+
+- date: 2026-03-13
+  - task: `task4-concurrency-and-safety`
+  - files-updated:
+    - `config.json` (added scheduler enablement and max concurrency settings)
+    - `src/orchestrator/config.py` (parses scheduler config into typed settings)
+    - `src/orchestrator/models.py` (added `SchedulerConfig`, `TaskFileInfo`, and `TaskExecutionResult`)
+    - `src/orchestrator/dispatcher.py` (remains the single-task stage engine used by the concurrent scheduler, including commit-after-audit and handoff behavior)
+    - `src/orchestrator/cli.py` (routes `run` and `continue` through `ConcurrentScheduler` when enabled, with `--sequential` override)
+    - `src/orchestrator/__init__.py` (exports `ConcurrentScheduler`)
+  - new-files-created:
+    - `src/orchestrator/scheduler.py` - safe parallel task scheduler with `ConcurrentScheduler`, `ConflictDetector`, and `ThreadSafeStateWriter`
+    - `tests/test_scheduler.py` - scheduler coverage for conflict detection, blocking-task isolation, dependency ordering, state persistence, and handoff escalation
+  - tests-added:
+    - Targeted scheduler/CLI coverage now verifies concurrent dispatch, file-conflict serialization, dependency waits, blocked/missing-dependency handling, handoff escalation, and persisted run-state correctness
+
+- date: 2026-03-13
   - task: `task3-account-rotation-and-multi-provider`
   - files-updated:
     - `config.json` (added per-stage fallback chains and Codex account-pool configuration)

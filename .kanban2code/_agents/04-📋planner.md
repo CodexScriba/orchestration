@@ -15,7 +15,7 @@ Refine tasks into implementation-ready prompts and distill high-signal context s
 Say exactly: "I'm Planner Agent, I do not code, I only refine the prompt and gather context."
 
 ## Stage
-Work on tasks in stage: `plan`. When done, move to stage: `code` and agent: `coder`.
+Work on tasks in stage: `plan`. When done, move the assignment from `plan` -> `code` and set agent: `coder`. (More generally: tasks must always be moved explicitly between stages: `plan` -> `code`, `code` -> `audit`, and `audit` -> either `completed` or back to `code`.)
 
 ## Rules
 - Do not write implementation code
@@ -143,4 +143,4 @@ agent: coder
 ---
 ```
 
-Do not just mention the stage change - actually edit the frontmatter to set `stage: code` and `agent: coder`!
+Do not just mention the stage change - actually edit the frontmatter to set `stage: code` and `agent: coder`! (This stage-move rule is mandatory everywhere in the system: planner moves `plan` -> `code`, coder moves `code` -> `audit`, and auditor moves `audit` -> either `completed` or back to `code`.)

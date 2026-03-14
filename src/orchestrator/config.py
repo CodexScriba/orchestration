@@ -12,6 +12,7 @@ from orchestrator.models import (
     CodeStageRoutingConfig,
     FallbackChainEntry,
     LoggingConfig,
+    MemoryConfig,
     NotificationConfig,
     OrchestratorConfig,
     PlanStageRoutingConfig,
@@ -79,6 +80,7 @@ def load_config(path: str | Path = "config.json") -> OrchestratorConfig:
         ),
         logging=_parse_logging(_require_mapping(raw_config, "logging"), "logging"),
         scheduler=_parse_scheduler(raw_config.get("scheduler"), "scheduler"),
+        memory=_parse_memory(raw_config.get("memory"), "memory"),
     )
 
 
@@ -255,6 +257,18 @@ def _parse_scheduler(raw_scheduler: object | None, path: str) -> SchedulerConfig
     return SchedulerConfig(
         max_concurrent=_require_int(raw_scheduler, "max_concurrent", path),
         enabled=_require_bool(raw_scheduler, "enabled", path),
+    )
+
+
+def _parse_memory(raw_memory: object | None, path: str) -> MemoryConfig:
+    """Parse memory config with defaults if not present."""
+    if raw_memory is None:
+        return MemoryConfig()
+    if not isinstance(raw_memory, Mapping):
+        raise ConfigError(f"Invalid config type for {path}: expected object")
+    return MemoryConfig(
+        warm_retention_per_project=_require_int(raw_memory, "warm_retention_per_project", path),
+        cold_aggregation_interval=_require_int(raw_memory, "cold_aggregation_interval", path),
     )
 
 
